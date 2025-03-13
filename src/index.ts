@@ -121,7 +121,16 @@ server.setRequestHandler(ListToolsRequestSchema, async (request: any) => {
       capabilities.tools.store_dependency,
       capabilities.tools.store_crate_documentation,
       capabilities.tools.search_code_snippets,
-      capabilities.tools.get_crate_documentation
+      capabilities.tools.get_crate_documentation,
+      {
+        name: "list_notes",
+        description: "List all notes with details",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: []
+        }
+      }
     ]
   };
 });
@@ -287,6 +296,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
     }
     throw new Error("An unknown error occurred while retrieving data.");
   }
+});
+
+/**
+ * Handler for the list_notes tool.
+ */
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+  if (request.params.name !== "list_notes") {
+    throw new Error("Unknown tool");
+  }
+
+  const detailedNotes = Object.entries(notes).map(([id, note]) => ({
+    id,
+    title: note.title,
+    content: note.content
+  }));
+
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify(detailedNotes, null, 2)
+    }]
+  };
 });
 
 /**

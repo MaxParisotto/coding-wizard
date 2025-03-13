@@ -1,0 +1,1 @@
+- **2025-03-13**: Added a new tool `list_notes` to the coding-wizard MCP server. This tool lists all notes with their details.
