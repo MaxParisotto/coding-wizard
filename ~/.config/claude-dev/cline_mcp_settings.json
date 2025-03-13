@@ -1,0 +1,159 @@
+{
+  "mcpServers": {
+    "mcp-installer": {
+      "command": "npx",
+      "args": [
+        "@anaisbetts/mcp-installer"
+      ],
+      "autoApprove": [
+        "install_repo_mcp_server",
+        "install_local_mcp_server"
+      ]
+    },
+    "github.com/NightTrek/Software-planning-mcp": {
+      "command": "node",
+      "args": [
+        "/Users/max/Documents/Cline/MCP/Software-planning-mcp/build/index.js"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "start_planning",
+        "save_plan",
+        "add_todo",
+        "remove_todo",
+        "get_todos",
+        "update_todo_status"
+      ]
+    },
+    "github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "sequentialthinking"
+      ]
+    },
+    "github.com/modelcontextprotocol/servers/tree/main/src/memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "autoApprove": [
+        "create_entities",
+        "create_relations",
+        "add_observations",
+        "delete_entities",
+        "delete_observations",
+        "delete_relations",
+        "read_graph",
+        "search_nodes",
+        "open_nodes",
+        "list_tools"
+      ]
+    },
+    "github.com/pashpashpash/mcp-taskmanager": {
+      "command": "node",
+      "args": [
+        "/Users/max/Documents/Cline/MCP/mcp-taskmanager/dist/index.js"
+      ],
+      "autoApprove": [
+        "request_planning",
+        "get_next_task",
+        "mark_task_done",
+        "approve_task_completion",
+        "approve_request_completion",
+        "open_task_details",
+        "list_requests",
+        "add_tasks_to_request",
+        "update_task",
+        "delete_task"
+      ]
+    },
+    "rust-mcp-toolkit": {
+      "command": "node",
+      "args": [
+        "/Users/max/Documents/Cline/MCP/rust-mcp-toolkit/dist/index.js"
+      ],
+      "disabled": false,
+      "env": {
+        "TRANSPORT": "stdio"
+      },
+      "autoApprove": [
+        "get_config"
+      ]
+    },
+    "qdrant": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-qdrant"
+      ],
+      "disabled": false,
+      "env": {
+        "QDRANT_URL": "http://192.168.2.190:6333",
+        "COLLECTION_NAME": "mcp",
+        "EMBEDDING_MODEL": "sentence-transformers/all-MiniLM-L6-v2"
+      },
+      "autoApprove": [
+        "qdrant-store",
+        "qdrant-find"
+      ]
+    },
+    "coding-wizard": {
+      "command": "node",
+      "args": [
+        "/Users/max/Documents/Cline/MCP/coding-wizard/qdrant-mcp-server/build/index.js"
+      ],
+      "disabled": false,
+      "description": "VectorDB Powered Coding Assistant",
+      "env": {
+        "QDRANT_SERVER_URL": "http://192.168.2.190:6333",
+        "COLLECTION_NAME": "mcp"
+      },
+      "autoApprove": [
+        "store_data",
+        "retrieve_data"
+      ],
+      "capabilities": {
+        "tools": {
+          "store_data": {
+            "description": "Store data in the mcp collection",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "documents": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "description": "Array of documents to store in the collection"
+                }
+              },
+              "required": ["documents"]
+            }
+          },
+          "retrieve_data": {
+            "description": "Retrieve data from the mcp collection based on a query",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "description": "Query string to search for documents"
+                },
+                "limit": {
+                  "type": "number",
+                  "description": "Maximum number of results to return (optional)"
+                }
+              },
+              "required": ["query"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
