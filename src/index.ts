@@ -8,18 +8,11 @@
  * - Creating new notes via a tool
  * - Summarizing all notes via a prompt
  */
-
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema, ListPromptsRequestSchema, GetPromptRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-  ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { store_code_snippet_schema, store_dependency_schema, store_crate_documentation_schema, search_code_snippets_schema, get_crate_documentation_schema } from "./schemas.js";
 
 /**
  * Type alias for a note object.
@@ -51,38 +44,25 @@ const server = new Server(
     capabilities: {
       resources: {},
       tools: {
-        store_data: {
-          description: "Store data in the mcp collection",
-          inputSchema: {
-            type: "object",
-            properties: {
-              documents: {
-                type: "array",
-                items: {
-                  type: "object"
-                },
-                description: "Array of documents to store in the collection"
-              }
-            },
-            required: ["documents"]
-          }
+        store_code_snippet: {
+          description: "Store a Rust code snippet in Qdrant.",
+          inputSchema: store_code_snippet_schema
         },
-        retrieve_data: {
-          description: "Retrieve data from the mcp collection based on a query",
-          inputSchema: {
-            type: "object",
-            properties: {
-              query: {
-                type: "string",
-                description: "Query string to search for documents"
-              },
-              limit: {
-                type: "number",
-                description: "Maximum number of results to return (optional)"
-              }
-            },
-            required: ["query"]
-          }
+        store_dependency: {
+          description: "Store a dependency for a Rust project in Qdrant.",
+          inputSchema: store_dependency_schema
+        },
+        store_crate_documentation: {
+          description: "Store crate documentation details in Qdrant.",
+          inputSchema: store_crate_documentation_schema
+        },
+        search_code_snippets: {
+          description: "Search for code snippets by keyword or tag.",
+          inputSchema: search_code_snippets_schema
+        },
+        get_crate_documentation: {
+          description: "Retrieve crate documentation details by name.",
+          inputSchema: get_crate_documentation_schema
         }
       },
       prompts: {},
@@ -97,7 +77,7 @@ const server = new Server(
  * - Plain text MIME type
  * - Human readable name and description (now including the note title)
  */
-server.setRequestHandler(ListResourcesRequestSchema, async () => {
+server.setRequestHandler(ListResourcesRequestSchema, async (request: any) => {
   return {
     resources: Object.entries(notes).map(([id, note]) => ({
       uri: `note:///${id}`,
@@ -112,7 +92,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
  * Handler for reading the contents of a specific note.
  * Takes a note:// URI and returns the note content as plain text.
  */
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+server.setRequestHandler(ReadResourceRequestSchema, async (request: any) => {
   const url = new URL(request.params.uri);
   const id = url.pathname.replace(/^\//, '');
   const note = notes[id];
@@ -132,104 +112,187 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
 /**
  * Handler that lists available tools.
- * Exposes a single "create_note" tool that lets clients create new notes.
  */
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+server.setRequestHandler(ListToolsRequestSchema, async (request: any) => {
   const capabilities = (server as any).capabilities;
   return {
     tools: [
-      capabilities.tools.store_data,
-      capabilities.tools.retrieve_data
+      capabilities.tools.store_code_snippet,
+      capabilities.tools.store_dependency,
+      capabilities.tools.store_crate_documentation,
+      capabilities.tools.search_code_snippets,
+      capabilities.tools.get_crate_documentation
     ]
   };
 });
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  switch (request.params.name) {
-    case "store_data": {
-      if (!request.params.arguments || !Array.isArray(request.params.arguments.documents)) {
-        throw new Error("Documents are required");
-      }
-      const documents = request.params.arguments.documents;
+/**
+ * Handler for the store_code_snippet tool.
+ */
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+  if (request.params.name !== "store_code_snippet") {
+    throw new Error("Unknown tool");
+  }
 
-      try {
-        await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, { points: documents.map((doc, idx) => ({ id: idx + 1, vector: [], payload: doc })) });
-        return {
-          content: [{
-            type: "text",
-            text: `Stored ${documents.length} documents in the mcp collection.`
-          }]
-        };
-      } catch (error) {
-        if (error instanceof Error) {
-          throw new Error(`Error storing data: ${error.message}`);
-        }
-        throw new Error("An unknown error occurred while storing data.");
-      }
+  const { code, language = "Rust", description, source, tags } = request.params.arguments;
+
+  try {
+    await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
+      points: [{
+        id: Math.floor(Math.random() * 10000),
+        vector: [],
+        payload: { code, language, description, source, tags }
+      }]
+    });
+
+    return {
+      content: [{
+        type: "text",
+        text: `Stored Rust code snippet in the mcp collection.`
+      }]
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Error storing data: ${error.message}`);
     }
-
-    case "retrieve_data": {
-      if (!request.params.arguments || typeof request.params.arguments.query !== 'string') {
-        throw new Error("Query is required");
-      }
-      const query = request.params.arguments.query;
-      const limit = request.params.arguments.limit || 10;
-
-      try {
-        const response = await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/search`, { vector: [], filter: {}, params: { query }, limit });
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(response.data, null, 2)
-          }]
-        };
-      } catch (error) {
-        if (error instanceof Error) {
-          throw new Error(`Error retrieving data: ${error.message}`);
-        }
-        throw new Error("An unknown error occurred while retrieving data.");
-      }
-    }
-
-    default:
-      throw new Error("Unknown tool");
+    throw new Error("An unknown error occurred while storing data.");
   }
 });
 
 /**
- * Handler for the create_note tool.
- * Creates a new note with the provided title and content, and returns success message.
+ * Handler for the store_dependency tool.
  */
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  switch (request.params.name) {
-    case "create_note": {
-      const title = String(request.params.arguments?.title);
-      const content = String(request.params.arguments?.content);
-      if (!title || !content) {
-        throw new Error("Title and content are required");
-      }
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+  if (request.params.name !== "store_dependency") {
+    throw new Error("Unknown tool");
+  }
 
-      const id = String(Object.keys(notes).length + 1);
-      notes[id] = { title, content };
+  const { dependency_name, version, repository_url, description } = request.params.arguments;
 
-      return {
-        content: [{
-          type: "text",
-          text: `Created note ${id}: ${title}`
-        }]
-      };
+  try {
+    await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
+      points: [{
+        id: Math.floor(Math.random() * 10000),
+        vector: [],
+        payload: { dependency_name, version, repository_url, description }
+      }]
+    });
+
+    return {
+      content: [{
+        type: "text",
+        text: `Stored dependency in the mcp collection.`
+      }]
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Error storing data: ${error.message}`);
     }
+    throw new Error("An unknown error occurred while storing data.");
+  }
+});
 
-    default:
-      throw new Error("Unknown tool");
+/**
+ * Handler for the store_crate_documentation tool.
+ */
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+  if (request.params.name !== "store_crate_documentation") {
+    throw new Error("Unknown tool");
+  }
+
+  const { crate_name, documentation_url, version, repository_url } = request.params.arguments;
+
+  try {
+    await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
+      points: [{
+        id: Math.floor(Math.random() * 10000),
+        vector: [],
+        payload: { crate_name, documentation_url, version, repository_url }
+      }]
+    });
+
+    return {
+      content: [{
+        type: "text",
+        text: `Stored crate documentation in the mcp collection.`
+      }]
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Error storing data: ${error.message}`);
+    }
+    throw new Error("An unknown error occurred while storing data.");
+  }
+});
+
+/**
+ * Handler for the search_code_snippets tool.
+ */
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+  if (request.params.name !== "search_code_snippets") {
+    throw new Error("Unknown tool");
+  }
+
+  const { query } = request.params.arguments;
+
+  try {
+    const response = await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/search`, {
+      vector: [],
+      filter: {},
+      params: { search: query },
+      limit: 10
+    });
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(response.data, null, 2)
+      }]
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Error retrieving data: ${error.message}`);
+    }
+    throw new Error("An unknown error occurred while retrieving data.");
+  }
+});
+
+/**
+ * Handler for the get_crate_documentation tool.
+ */
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+  if (request.params.name !== "get_crate_documentation") {
+    throw new Error("Unknown tool");
+  }
+
+  const { crate_name } = request.params.arguments;
+
+  try {
+    const response = await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/search`, {
+      vector: [],
+      filter: {},
+      params: { search: `crate_name: ${crate_name}` },
+      limit: 1
+    });
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(response.data, null, 2)
+      }]
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Error retrieving data: ${error.message}`);
+    }
+    throw new Error("An unknown error occurred while retrieving data.");
   }
 });
 
 /**
  * Handler that lists available prompts.
- * Exposes a single "summarize_notes" prompt that summarizes all notes.
  */
-server.setRequestHandler(ListPromptsRequestSchema, async () => {
+server.setRequestHandler(ListPromptsRequestSchema, async (request: any) => {
   return {
     prompts: [
       {
@@ -242,9 +305,8 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
 
 /**
  * Handler for the summarize_notes prompt.
- * Returns a prompt that requests summarization of all notes, with the notes' contents embedded as resources.
  */
-server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+server.setRequestHandler(GetPromptRequestSchema, async (request: any) => {
   if (request.params.name !== "summarize_notes") {
     throw new Error("Unknown prompt");
   }
@@ -284,11 +346,10 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
 
 /**
  * Start the server using stdio transport.
- * This allows the server to communicate via standard input/output streams.
  */
 async function main() {
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await (server as any).connect(transport);
 }
 
 main().catch((error) => {
