@@ -105,55 +105,15 @@
     "coding-wizard": {
       "command": "node",
       "args": [
-        "/Users/max/Documents/Cline/MCP/coding-wizard/qdrant-mcp-server/build/index.js"
+        "/Users/max/Documents/Cline/MCP/coding-wizard/build/index.js"
       ],
       "disabled": false,
       "description": "VectorDB Powered Coding Assistant",
       "env": {
         "QDRANT_SERVER_URL": "http://192.168.2.190:6333",
         "COLLECTION_NAME": "mcp"
-      },
-      "autoApprove": [
-        "store_data",
-        "retrieve_data"
-      ],
-      "capabilities": {
-        "tools": {
-          "store_data": {
-            "description": "Store data in the mcp collection",
-            "inputSchema": {
-              "type": "object",
-              "properties": {
-                "documents": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  },
-                  "description": "Array of documents to store in the collection"
-                }
-              },
-              "required": ["documents"]
-            }
-          },
-          "retrieve_data": {
-            "description": "Retrieve data from the mcp collection based on a query",
-            "inputSchema": {
-              "type": "object",
-              "properties": {
-                "query": {
-                  "type": "string",
-                  "description": "Query string to search for documents"
-                },
-                "limit": {
-                  "type": "number",
-                  "description": "Maximum number of results to return (optional)"
-                }
-              },
-              "required": ["query"]
-            }
-          }
-        }
       }
     }
-  }
+  }  
 }
+

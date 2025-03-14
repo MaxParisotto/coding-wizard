@@ -8,11 +8,20 @@
  * - Creating new notes via a tool
  * - Summarizing all notes via a prompt
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema, ListPromptsRequestSchema, GetPromptRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import axios from "axios";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { store_code_snippet_schema, store_dependency_schema, store_crate_documentation_schema, search_code_snippets_schema, get_crate_documentation_schema } from "./schemas.js";
+import { ListToolsRequestSchema, GetPromptRequestSchema, ListPromptsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { promisify } from "util";
+import axios from "axios";
+import fs from "fs";
+import { exec as _exec } from "child_process";
+const exec = promisify(_exec);
+import { z } from "zod";
+
+const server = new McpServer({
+  name: "coding-wizard",
+  version: "0.1.0"
+});
 
 /**
  * Type alias for a note object.
@@ -29,108 +38,47 @@ const notes: { [id: string]: Note } = {
 };
 
 /**
- * Create an MCP server with capabilities for resources (to list/read notes),
- * tools (to create new notes), and prompts (to summarize notes).
- */
-const QDRANT_SERVER_URL = process.env.QDRANT_SERVER_URL || "http://192.168.2.190:6333";
-const COLLECTION_NAME = "mcp";
-
-const server = new Server(
-  {
-    name: "coding-wizard",
-    version: "0.1.0",
-  },
-  {
-    capabilities: {
-      resources: {},
-      tools: {
-        store_code_snippet: {
-          description: "Store a Rust code snippet in Qdrant.",
-          inputSchema: store_code_snippet_schema
-        },
-        store_dependency: {
-          description: "Store a dependency for a Rust project in Qdrant.",
-          inputSchema: store_dependency_schema
-        },
-        store_crate_documentation: {
-          description: "Store crate documentation details in Qdrant.",
-          inputSchema: store_crate_documentation_schema
-        },
-        search_code_snippets: {
-          description: "Search for code snippets by keyword or tag.",
-          inputSchema: search_code_snippets_schema
-        },
-        get_crate_documentation: {
-          description: "Retrieve crate documentation details by name.",
-          inputSchema: get_crate_documentation_schema
-        }
-      },
-      prompts: {},
-    },
-  }
-);
-
-/**
  * Handler for listing available notes as resources.
  * Each note is exposed as a resource with:
  * - A note:// URI scheme
  * - Plain text MIME type
  * - Human readable name and description (now including the note title)
  */
-server.setRequestHandler(ListResourcesRequestSchema, async (request: any) => {
-  return {
-    resources: Object.entries(notes).map(([id, note]) => ({
-      uri: `note:///${id}`,
-      mimeType: "text/plain",
-      name: note.title,
-      description: `A text note: ${note.title}`
-    }))
-  };
-});
+server.resource(
+  "note",
+  "note:///.*",
+  async (uri) => {
+    const url = new URL(uri.href);
+    const id = url.pathname.replace(/^\//, '');
+    const note = notes[id];
 
-/**
- * Handler for reading the contents of a specific note.
- * Takes a note:// URI and returns the note content as plain text.
- */
-server.setRequestHandler(ReadResourceRequestSchema, async (request: any) => {
-  const url = new URL(request.params.uri);
-  const id = url.pathname.replace(/^\//, '');
-  const note = notes[id];
+    if (!note) {
+      throw new Error(`Note ${id} not found`);
+    }
 
-  if (!note) {
-    throw new Error(`Note ${id} not found`);
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: "text/plain",
+        text: note.content
+      }]
+    };
   }
-
-  return {
-    contents: [{
-      uri: request.params.uri,
-      mimeType: "text/plain",
-      text: note.content
-    }]
-  };
-});
+);
 
 /**
- * Handler that lists available tools.
+ * Handler for listing available tools.
  */
 server.setRequestHandler(ListToolsRequestSchema, async (request: any) => {
-  const capabilities = (server as any).capabilities;
+  console.log("ListToolsRequestSchema handler called");
   return {
     tools: [
-      capabilities.tools.store_code_snippet,
-      capabilities.tools.store_dependency,
-      capabilities.tools.store_crate_documentation,
-      capabilities.tools.search_code_snippets,
-      capabilities.tools.get_crate_documentation,
-      {
-        name: "list_notes",
-        description: "List all notes with details",
-        inputSchema: {
-          type: "object",
-          properties: {},
-          required: []
-        }
-      }
+      server.tool.store_code_snippet,
+      server.tool.store_dependency,
+      server.tool.store_crate_documentation,
+      server.tool.search_code_snippets,
+      server.tool.get_crate_documentation,
+      server.tool.code_review
     ]
   };
 });
@@ -138,187 +86,244 @@ server.setRequestHandler(ListToolsRequestSchema, async (request: any) => {
 /**
  * Handler for the store_code_snippet tool.
  */
-server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-  if (request.params.name !== "store_code_snippet") {
-    throw new Error("Unknown tool");
+server.tool(
+  "store_code_snippet",
+  { code: z.string(), language: z.string().optional(), description: z.string().optional(), source: z.string().optional(), tags: z.array(z.string()).optional() },
+  async ({ code, language = "Rust", description, source, tags }) => {
+    try {
+      await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
+        points: [{
+          id: Math.floor(Math.random() * 10000),
+          vector: [],
+          payload: { code, language, description, source, tags }
+        }]
+      });
+
+      return {
+        content: [{
+          type: "text",
+          text: `Stored Rust code snippet in the mcp collection.`
+        }]
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error storing data: ${error.message}`);
+      }
+      throw new Error("An unknown error occurred while storing data.");
+    }
   }
+);
 
-  const { code, language = "Rust", description, source, tags } = request.params.arguments;
+/**
+ * Handler for the code_review tool.
+ */
+server.tool(
+  "code_review",
+  { code: z.string() },
+  async ({ code }) => {
+    const tempFilePath = '/tmp/code_review.rs';
+    fs.writeFileSync(tempFilePath, code);
 
-  try {
-    await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
-      points: [{
-        id: Math.floor(Math.random() * 10000),
-        vector: [],
-        payload: { code, language, description, source, tags }
-      }]
-    });
+    // Run rustfmt to format the code
+    let rustfmtOutput = '';
+    try {
+      rustfmtOutput = await new Promise((resolve, reject) => {
+        exec(`rustfmt ${tempFilePath}`, (error: Error | null, stdout: string, stderr: string) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(stdout);
+          }
+        });
+      });
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error formatting code with rustfmt: ${(error as Error).message}`
+        }],
+        isError: true
+      };
+    }
+
+    // Run clippy-driver to lint the code
+    let clippyOutput = '';
+    try {
+      clippyOutput = await new Promise((resolve, reject) => {
+        exec(`clippy-driver --input-format=auto --emit=json ${tempFilePath}`, (error: Error | null, stdout: string, stderr: string) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(stdout);
+          }
+        });
+      });
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error linting code with clippy-driver: ${(error as Error).message}`
+        }],
+        isError: true
+      };
+    }
+
+    // Read the formatted code
+    const formattedCode = fs.readFileSync(tempFilePath, 'utf8');
+    fs.unlinkSync(tempFilePath);
 
     return {
       content: [{
         type: "text",
-        text: `Stored Rust code snippet in the mcp collection.`
+        text: `Formatted Code:\n${formattedCode}\n\nClippy Output:\n${clippyOutput}`
       }]
     };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Error storing data: ${error.message}`);
-    }
-    throw new Error("An unknown error occurred while storing data.");
   }
-});
+);
 
 /**
  * Handler for the store_dependency tool.
  */
-server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-  if (request.params.name !== "store_dependency") {
-    throw new Error("Unknown tool");
-  }
+server.tool(
+  "store_dependency",
+  { dependency_name: z.string(), version: z.string().optional(), repository_url: z.string().optional(), description: z.string().optional() },
+  async ({ dependency_name, version, repository_url, description }) => {
+    try {
+      await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
+        points: [{
+          id: Math.floor(Math.random() * 10000),
+          vector: [],
+          payload: { dependency_name, version, repository_url, description }
+        }]
+      });
 
-  const { dependency_name, version, repository_url, description } = request.params.arguments;
-
-  try {
-    await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
-      points: [{
-        id: Math.floor(Math.random() * 10000),
-        vector: [],
-        payload: { dependency_name, version, repository_url, description }
-      }]
-    });
-
-    return {
-      content: [{
-        type: "text",
-        text: `Stored dependency in the mcp collection.`
-      }]
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Error storing data: ${error.message}`);
+      return {
+        content: [{
+          type: "text",
+          text: `Stored dependency in the mcp collection.`
+        }]
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error storing data: ${error.message}`);
+      }
+      throw new Error("An unknown error occurred while storing data.");
     }
-    throw new Error("An unknown error occurred while storing data.");
   }
-});
+);
 
 /**
  * Handler for the store_crate_documentation tool.
  */
-server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-  if (request.params.name !== "store_crate_documentation") {
-    throw new Error("Unknown tool");
-  }
+server.tool(
+  "store_crate_documentation",
+  { crate_name: z.string(), documentation_url: z.string().optional(), version: z.string().optional(), repository_url: z.string().optional() },
+  async ({ crate_name, documentation_url, version, repository_url }) => {
+    try {
+      await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
+        points: [{
+          id: Math.floor(Math.random() * 10000),
+          vector: [],
+          payload: { crate_name, documentation_url, version, repository_url }
+        }]
+      });
 
-  const { crate_name, documentation_url, version, repository_url } = request.params.arguments;
-
-  try {
-    await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
-      points: [{
-        id: Math.floor(Math.random() * 10000),
-        vector: [],
-        payload: { crate_name, documentation_url, version, repository_url }
-      }]
-    });
-
-    return {
-      content: [{
-        type: "text",
-        text: `Stored crate documentation in the mcp collection.`
-      }]
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Error storing data: ${error.message}`);
+      return {
+        content: [{
+          type: "text",
+          text: `Stored crate documentation in the mcp collection.`
+        }]
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error storing data: ${error.message}`);
+      }
+      throw new Error("An unknown error occurred while storing data.");
     }
-    throw new Error("An unknown error occurred while storing data.");
   }
-});
+);
 
 /**
  * Handler for the search_code_snippets tool.
  */
-server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-  if (request.params.name !== "search_code_snippets") {
-    throw new Error("Unknown tool");
-  }
+server.tool(
+  "search_code_snippets",
+  { query: z.string() },
+  async ({ query }) => {
+    try {
+      const response = await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/search`, {
+        vector: [],
+        filter: {},
+        params: { search: query },
+        limit: 10
+      });
 
-  const { query } = request.params.arguments;
-
-  try {
-    const response = await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/search`, {
-      vector: [],
-      filter: {},
-      params: { search: query },
-      limit: 10
-    });
-
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(response.data, null, 2)
-      }]
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Error retrieving data: ${error.message}`);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(response.data, null, 2)
+        }]
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error retrieving data: ${error.message}`);
+      }
+      throw new Error("An unknown error occurred while retrieving data.");
     }
-    throw new Error("An unknown error occurred while retrieving data.");
   }
-});
+);
 
 /**
  * Handler for the get_crate_documentation tool.
  */
-server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-  if (request.params.name !== "get_crate_documentation") {
-    throw new Error("Unknown tool");
-  }
+server.tool(
+  "get_crate_documentation",
+  { crate_name: z.string() },
+  async ({ crate_name }) => {
+    try {
+      const response = await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/search`, {
+        vector: [],
+        filter: {},
+        params: { search: `crate_name: ${crate_name}` },
+        limit: 1
+      });
 
-  const { crate_name } = request.params.arguments;
-
-  try {
-    const response = await axios.post(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/search`, {
-      vector: [],
-      filter: {},
-      params: { search: `crate_name: ${crate_name}` },
-      limit: 1
-    });
-
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify(response.data, null, 2)
-      }]
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(`Error retrieving data: ${error.message}`);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(response.data, null, 2)
+        }]
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error retrieving data: ${error.message}`);
+      }
+      throw new Error("An unknown error occurred while retrieving data.");
     }
-    throw new Error("An unknown error occurred while retrieving data.");
   }
-});
+);
 
 /**
  * Handler for the list_notes tool.
  */
-server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-  if (request.params.name !== "list_notes") {
-    throw new Error("Unknown tool");
+server.tool(
+  "list_notes",
+  {},
+  async () => {
+    const detailedNotes = Object.entries(notes).map(([id, note]) => ({
+      id,
+      title: note.title,
+      content: note.content
+    }));
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(detailedNotes, null, 2)
+      }]
+    };
   }
-
-  const detailedNotes = Object.entries(notes).map(([id, note]) => ({
-    id,
-    title: note.title,
-    content: note.content
-  }));
-
-  return {
-    content: [{
-      type: "text",
-      text: JSON.stringify(detailedNotes, null, 2)
-    }]
-  };
-});
+);
 
 /**
  * Handler that lists available prompts.
@@ -380,7 +385,7 @@ server.setRequestHandler(GetPromptRequestSchema, async (request: any) => {
  */
 async function main() {
   const transport = new StdioServerTransport();
-  await (server as any).connect(transport);
+  await server.connect(transport);
 }
 
 main().catch((error) => {
@@ -389,5 +394,5 @@ main().catch((error) => {
 });
 
 // Add logging for the Qdrant server URL and collection name
-console.log(`Qdrant Server URL: ${QDRANT_SERVER_URL}`);
-console.log(`Collection Name: ${COLLECTION_NAME}`);
+console.log(`Qdrant Server URL: ${process.env.QDRANT_SERVER_URL}`);
+console.log(`Collection Name: ${process.env.COLLECTION_NAME}`);

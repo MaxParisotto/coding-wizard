@@ -47,3 +47,11 @@ export const get_crate_documentation_schema = {
   },
   required: ["crate_name"]
 };
+
+export const code_review_schema = {
+  type: "object",
+  properties: {
+    code: { type: "string", description: "The Rust code to review." }
+  },
+  required: ["code"]
+};
