@@ -17,6 +17,7 @@ import fs from "fs";
 import { exec as _exec } from "child_process";
 const exec = promisify(_exec);
 import { z } from "zod";
+import { QDRANT_SERVER_URL, COLLECTION_NAME } from "./config.js";
 
 const server = new McpServer({
   name: "coding-wizard",
@@ -65,24 +66,6 @@ server.resource(
     };
   }
 );
-
-/**
- * Handler for listing available tools.
- */
-server.setRequestHandler(ListToolsRequestSchema, async (request: any) => {
-  console.log("ListToolsRequestSchema handler called");
-  return {
-    tools: [
-      server.tool.store_code_snippet,
-      server.tool.store_dependency,
-      server.tool.store_crate_documentation,
-      server.tool.search_code_snippets,
-      server.tool.get_crate_documentation,
-      server.tool.code_review
-    ]
-  };
-});
-
 /**
  * Handler for the store_code_snippet tool.
  */
@@ -324,61 +307,6 @@ server.tool(
     };
   }
 );
-
-/**
- * Handler that lists available prompts.
- */
-server.setRequestHandler(ListPromptsRequestSchema, async (request: any) => {
-  return {
-    prompts: [
-      {
-        name: "summarize_notes",
-        description: "Summarize all notes",
-      }
-    ]
-  };
-});
-
-/**
- * Handler for the summarize_notes prompt.
- */
-server.setRequestHandler(GetPromptRequestSchema, async (request: any) => {
-  if (request.params.name !== "summarize_notes") {
-    throw new Error("Unknown prompt");
-  }
-
-  const embeddedNotes = Object.entries(notes).map(([id, note]) => ({
-    type: "resource" as const,
-    resource: {
-      uri: `note:///${id}`,
-      mimeType: "text/plain",
-      text: note.content
-    }
-  }));
-
-  return {
-    messages: [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "Please summarize the following notes:"
-        }
-      },
-      ...embeddedNotes.map(note => ({
-        role: "user" as const,
-        content: note
-      })),
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "Provide a concise summary of all the notes above."
-        }
-      }
-    ]
-  };
-});
 
 /**
  * Start the server using stdio transport.
