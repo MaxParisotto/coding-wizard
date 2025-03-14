@@ -110,15 +110,8 @@ server.tool(
     // Run rustfmt to format the code
     let rustfmtOutput = '';
     try {
-      rustfmtOutput = await new Promise((resolve, reject) => {
-        exec(`rustfmt ${tempFilePath}`, (error: Error | null, stdout: string, stderr: string) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve(stdout);
-          }
-        });
-      });
+      const { stdout } = await exec(`rustfmt ${tempFilePath}`);
+      rustfmtOutput = stdout;
     } catch (error) {
       return {
         content: [{
@@ -132,15 +125,8 @@ server.tool(
     // Run clippy-driver to lint the code
     let clippyOutput = '';
     try {
-      clippyOutput = await new Promise((resolve, reject) => {
-        exec(`clippy-driver --input-format=auto --emit=json ${tempFilePath}`, (error: Error | null, stdout: string, stderr: string) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve(stdout);
-          }
-        });
-      });
+      const { stdout } = await exec(`clippy-driver --input-format=auto --emit=json ${tempFilePath}`);
+      clippyOutput = stdout;
     } catch (error) {
       return {
         content: [{
