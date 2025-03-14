@@ -4,7 +4,7 @@
   "description": "A template MCP server that implements a powerful coding assistant leveraging Qdrant Vector DB.",
   "main": "build/index.js",
   "scripts": {
-    "build": "./node_modules/.bin/tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\""
+    "build": "tsc"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.7.0",
