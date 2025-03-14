@@ -38,3 +38,22 @@
     2. Better separation of concerns
     3. Easier to extend with new features
     4. Simplified main file (index.ts)
+- **2025-03-14 (Functionality Testing)**: Tested the reorganized codebase functionality:
+  - Working functionality:
+    1. `list_notes` tool: Successfully lists available notes
+  - Issues identified:
+    1. `note` resource: Failed to access with "Resource note://1 not found" error
+    2. `code_review` tool: Failed with "Cannot read properties of undefined (reading 'toLowerCase')" error
+    3. `store_code_snippet` tool: Failed with "Cannot read properties of undefined (reading 'substring')" error
+    4. `search_code_snippets` tool: Failed with generic error
+  - Recommendations for improvement:
+    1. Fix resource URI handling in the resources.ts file to properly parse note IDs
+    2. Add proper null/undefined checks in the code_review tool for language parameter
+    3. Add proper null/undefined checks in the store_code_snippet tool for code parameter
+    4. Implement proper error handling for Qdrant operations in all tools
+    5. Add comprehensive logging to help diagnose issues
+    6. Create unit tests for each module to verify functionality
+    7. Add integration tests to ensure tools and resources work together correctly
+    8. Consider implementing a dependency injection pattern for better testability
+    9. Add proper schema validation for tool parameters
+    10. Implement a more robust connection handling mechanism for Qdrant

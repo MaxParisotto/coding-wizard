@@ -28,11 +28,16 @@ export function registerTools(server: McpServer): void {
     {}, // Use empty object for the schema to avoid validation issues
     async ({ code, language = "JavaScript", description = "", source = "", tags = [] }) => {
       try {
+        // Ensure code is defined
+        if (!code) {
+          throw new Error("Code parameter is required");
+        }
+        
         // Ensure collection exists
         await ensureCollectionExists();
         
         // Create a searchable text for filtering and semantic search
-        const searchableText = `${language} ${description} ${source} ${tags.join(' ')} ${code.substring(0, 1000)}`;
+        const searchableText = `${language} ${description} ${source} ${tags.join(' ')} ${code.substring(0, Math.min(1000, code.length))}`;
         
         // Generate a unique ID
         const id = Date.now().toString() + Math.floor(Math.random() * 10000).toString();
@@ -88,7 +93,10 @@ You can retrieve this snippet later using:
     {}, // Use empty object for the schema to avoid validation issues
     async ({ code, language }) => {
       try {
-        // Normalize language name
+        // Ensure language is defined and normalize it
+        if (!language) {
+          throw new Error("Language parameter is required");
+        }
         const normalizedLanguage = language.toLowerCase();
         
         // Basic code analysis for common issues
@@ -190,7 +198,16 @@ You can retrieve this snippet later using:
     {}, // Use empty object for the schema to avoid validation issues
     async ({ query, language = "", limit = 5 }: { query: string; language?: string; limit?: number }) => {
       try {
-        await ensureCollectionExists();
+        // Ensure query is defined
+        if (!query) {
+          throw new Error("Query parameter is required");
+        }
+        
+        // Ensure collection exists
+        const collectionExists = await ensureCollectionExists();
+        if (!collectionExists) {
+          throw new Error("Qdrant collection does not exist. Please create it manually with the proper embedding configuration.");
+        }
         
         // Build the filter
         const filter: any = {

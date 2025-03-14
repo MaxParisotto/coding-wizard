@@ -24,8 +24,9 @@ export function registerResources(server: McpServer): void {
     "note",
     "note://.*",
     async (uri) => {
-      const url = new URL(uri.href);
-      const id = url.pathname.replace(/^\//, '');
+      // Extract the ID from the URI
+      // URI format is note://ID
+      const id = uri.href.replace('note://', '');
       const note = notes[id];
 
       if (!note) {
