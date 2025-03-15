@@ -2,6 +2,7 @@ import { promisify } from "util";
 import axios, { AxiosError } from "axios";
 import fs from "fs";
 import { exec as _exec } from "child_process";
+const { QdrantClient } = await import("@qdrant/js-client-rest");
 
 export const QDRANT_SERVER_URL = process.env.QDRANT_SERVER_URL || 'http://localhost:6333';
 export const COLLECTION_NAME = process.env.QDRANT_COLLECTION_NAME || 'mcp';
@@ -24,13 +25,15 @@ interface SimilarPattern {
   example: string;
 }
 
-// New interface for Qdrant search results
+// Interface matching Qdrant API response
 interface SearchResultItem {
-  payload?: {
-    description?: string;
-    source?: string;
-    code?: string;
-  };
+  id: string | number;
+  version: number;
+  score: number;
+  payload?: Record<string, unknown> | null;
+  vector?: number[] | number[][] | Record<string, unknown> | null;
+  shard_key?: string | number | Record<string, unknown> | null;
+  order_value?: number | Record<string, unknown> | null;
 }
 
 // Helper function for calculating line numbers
@@ -40,11 +43,9 @@ function getLineFromCharIndex(code: string, charIndex: number): number | undefin
 }
 
 export async function getClient() {
-  const qdrantClient = require("qdrant-client").Client;
-  return new qdrantClient({
+  return new QdrantClient({
     url: QDRANT_SERVER_URL,
-    timeout: 5000,
-    maxRetries: 3,
+    timeout: 5000
   });
 }
 
@@ -54,52 +55,59 @@ export async function ensureCollectionExists(): Promise<boolean> {
     await client.getCollection(COLLECTION_NAME);
     return true;
   } catch (error) {
-    await client.createCollection({
-      name: COLLECTION_NAME,
-      vectors_config: {
-        config: { type: "text", params: { models: ["multi-qa-mpnet-base-cv2__en"] } },
-      },
+    await client.createCollection(COLLECTION_NAME, {
+      vectors: {
+        size: 768,
+        distance: "Cosine"
+      }
     });
   }
   return true;
 }
 
-export function analyzeCode(code: string, language: string): CodeAnalysisResult {
-  const issues: Array<{ severity: string; message: string; line?: number | undefined }> = [];
-  let bestPractices: string[] = [];
+import { ESLint } from 'eslint';
 
+export async function analyzeCode(code: string, language: string): Promise<CodeAnalysisResult> {
+  const issues: Array<{ severity: string; message: string; line?: number | undefined; suggestion?: string }> = [];
+  const bestPractices: string[] = [];
+  
   try {
-    new Function(code); // Basic syntax check
-  } catch (error) { 
-    const err = error as any;
-    if ('lineNumber' in err && typeof err.lineNumber === 'number') {
-      const line = getLineFromCharIndex(
-        code,
-        err.lineNumber - 1 // Adjust for zero-based indexing?
-      );
-      issues.push({
-        severity: "Error",
-        message: `Syntax error in ${language} code: ${err.message}`,
-        line: line
-      });
-    } else {
-      issues.push({ severity: "Error", message: `Unknown syntax error` });
+    const eslint = new ESLint({
+      overrideConfigFile: 'eslint.config.js',
+    });
+
+    const results = await eslint.lintText(code, {
+      filePath: `temp.${language === 'typescript' ? 'ts' : 'js'}`
+    });
+
+    for (const result of results) {
+      for (const message of result.messages) {
+        issues.push({
+          severity: message.severity === 2 ? 'Error' : message.severity === 1 ? 'Warning' : 'Info',
+          message: message.message,
+          line: message.line,
+          suggestion: message.fix ? 'Run ESLint fix' : undefined
+        });
+      }
     }
-  }
 
-  if (language.toLowerCase() === 'javascript') {
-    bestPractices = [
-      "Avoid var declarations where possible",
-      "Use type annotations for clarity"
-    ];
-  } else if (language.toLowerCase() === 'python') {
-    bestPractices = [
-      "Use type hints for functions",
-      "Follow PEP8 naming conventions"
-    ];
-  }
+    // Add language-specific best practices
+    if (language.toLowerCase() === 'javascript' || language.toLowerCase() === 'typescript') {
+      bestPractices.push(
+        "Use const/let instead of var",
+        "Prefer arrow functions for callbacks",
+        "Use strict equality (===) instead of loose equality (==)"
+      );
+    }
 
-  return { issues, bestPractices };
+    return { issues, bestPractices };
+  } catch (error) {
+    console.error('ESLint analysis failed:', error);
+    return {
+      issues: [{ severity: 'Error', message: 'Code analysis failed' }],
+      bestPractices: []
+    };
+  }
 }
 
 export async function formatRustCode(code: string): Promise<{ formattedCode: string; lintOutput: string }> {
@@ -137,16 +145,29 @@ export async function findSimilarPatterns(code: string, language: string): Promi
   try {
     const dummyVector = Array(768).fill(0);
     
-    const response = await client.search(
-      COLLECTION_NAME,
-      { vector: dummyVector },
-      { limit: 5, filter: { must: [{ key: "language", match: { value: language } }] } }
-    );
+    const response = await client.search(COLLECTION_NAME, {
+      vector: dummyVector,
+      limit: 5,
+      filter: {
+        must: [
+          {
+            key: "language",
+            match: { value: language }
+          }
+        ]
+      }
+    });
     
-    return (response.result || []).map((item: SearchResultItem) => ({
-      name: item.payload?.description ?? 'Unnamed snippet',
-      description: item.payload?.source ?? 'No source information',
-      example: item.payload?.code ?? ''
+    return response.map((item: SearchResultItem) => ({
+      name: item.payload && typeof item.payload.description === 'string' 
+        ? item.payload.description 
+        : 'Unnamed snippet',
+      description: item.payload && typeof item.payload.source === 'string'
+        ? item.payload.source
+        : 'No source information',
+      example: item.payload && typeof item.payload.code === 'string'
+        ? item.payload.code
+        : ''
     })) as SimilarPattern[];
   } catch (error) {
     console.error('Similar patterns search failed:', error);

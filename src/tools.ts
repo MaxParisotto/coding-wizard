@@ -231,7 +231,7 @@ export function registerTools(server: McpServer): void {
       const { code, language } = validateInput(codeReviewSchema, args);
       const normalizedLanguage = language.toLowerCase();
       
-      const analysis = analyzeCode(code, normalizedLanguage);
+      const analysis = await analyzeCode(code, normalizedLanguage);
       const { formattedCode, formattingResult } = await formatCode(code, normalizedLanguage);
       const similarPatterns = await findSimilarPatterns(code, normalizedLanguage);
       

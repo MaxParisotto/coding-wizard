@@ -1,24 +1,40 @@
+import js from '@eslint/js';
 import ts from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 
 export default [
   {
-    files: ['**/*.ts'],
+    ignores: ['eslint.config.js'],
+    files: ['**/*.js', '**/*.ts'],
     languageOptions: {
-      parser: tsParser,
+      globals: {
+        process: 'readonly',
+        console: 'readonly'
+      },
       ecmaVersion: 'latest',
-      sourceType: 'module'
+      sourceType: 'module',
+      parser: tsParser,
+      parserOptions: {
+        project: './tsconfig.json'
+      }
     },
     plugins: {
       '@typescript-eslint': ts
     },
     rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/explicit-function-return-type': 'error',
-      '@typescript-eslint/no-unused-vars': 'warn',
-      'no-console': 'warn',
+      ...js.configs.recommended.rules,
+      ...ts.configs.recommended.rules,
       'semi': ['error', 'always'],
-      'quotes': ['error', 'single']
+      'quotes': ['error', 'single'],
+      'indent': ['error', 2],
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error'],
+      'no-console': 'warn',
+      'prefer-const': 'error',
+      'object-curly-spacing': ['error', 'always'],
+      'array-bracket-spacing': ['error', 'never'],
+      'comma-dangle': ['error', 'always-multiline'],
+      'arrow-parens': ['error', 'as-needed']
     }
   }
 ];
