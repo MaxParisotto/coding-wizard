@@ -15,7 +15,10 @@ export default [
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/explicit-function-return-type': 'error',
-      '@typescript-eslint/no-unused-vars': 'error'
+      '@typescript-eslint/no-unused-vars': 'warn',
+      'no-console': 'warn',
+      'semi': ['error', 'always'],
+      'quotes': ['error', 'single']
     }
   }
 ];
