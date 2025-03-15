@@ -75,6 +75,12 @@ export type CodeFormattingResult = {
   lintOutput: string;
 };
 
+export enum LogLevel {
+  LOG = 'log',
+  INFO = 'info',
+  WARN = 'warn',
+  ERROR = 'error',
+}
 /**
  * Type for similar pattern result
  */
