@@ -18,29 +18,33 @@ This directory contains the Docker configuration for running Qdrant vector datab
 ## Installation
 
 1. Copy this directory to your server:
+
    ```bash
    scp -r docker/ user@your-server:/path/to/destination/
    ```
 
 2. SSH into your server:
+
    ```bash
    ssh user@your-server
    ```
 
 3. Navigate to the docker directory:
+
    ```bash
    cd /path/to/destination/docker
    ```
 
 4. Start the services:
+
    ```bash
    docker-compose up -d
    ```
 
 ## Service URLs
 
-- Qdrant: http://localhost:6333
-- Embedding Service: http://localhost:8000
+- Qdrant: <http://localhost:6333>
+- Embedding Service: <http://localhost:8000>
 
 ## API Endpoints
 
@@ -61,6 +65,7 @@ This directory contains the Docker configuration for running Qdrant vector datab
 ## Monitoring
 
 View logs:
+
 ```bash
 # All services
 docker-compose logs -f
@@ -83,16 +88,19 @@ docker-compose down
 ## Troubleshooting
 
 1. If the embedding service fails to start, check the logs:
+
    ```bash
    docker-compose logs embedding_service
    ```
 
 2. If you need to rebuild the embedding service:
+
    ```bash
    docker-compose build --no-cache embedding_service
    ```
 
 3. To check if services are healthy:
+
    ```bash
    docker-compose ps
-   ``` 
+   ```

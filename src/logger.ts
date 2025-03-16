@@ -1,6 +1,5 @@
 import winston from 'winston';
 import path from 'path';
-import fs from 'fs';
 
 // Define custom log levels
 const levels = {
@@ -32,38 +31,20 @@ const format = winston.format.combine(
   ),
 );
 
-// Ensure logs directory exists
-const logsDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
-}
-
-// Define which transports the logger must use
-const transports = [
-  // Write all logs with importance level of `error` or less to `error.log`
-  new winston.transports.File({
-    filename: path.join(logsDir, 'error.log'),
-    level: 'error',
-  }),
-  // Write all logs with importance level of `debug` or less to `combined.log`
-  new winston.transports.File({
-    filename: path.join(logsDir, 'combined.log'),
-  }),
-  // Write to console with custom format
-  new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple(),
-    ),
-  }),
-];
-
-// Create the logger instance
+// Create the logger instance with only console transport initially
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   levels,
   format,
-  transports,
+  transports: [
+    // Write to console with custom format
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple(),
+      ),
+    }),
+  ],
 });
 
 // Create a stream object with a write function that will be used by Morgan
@@ -72,5 +53,20 @@ const stream = {
     logger.http(message.trim());
   },
 };
+
+// Function to add file transports after directory is created
+export function addFileTransports(logDirectory: string) {
+  logger.add(
+    new winston.transports.File({
+      filename: path.join(logDirectory, 'error.log'),
+      level: 'error',
+    })
+  );
+  logger.add(
+    new winston.transports.File({
+      filename: path.join(logDirectory, 'combined.log'),
+    })
+  );
+}
 
 export { logger, stream };

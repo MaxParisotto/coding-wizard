@@ -44,18 +44,26 @@ interface SearchResultItem {
 
 // Helper function for calculating line numbers
 
-export async function getClient(): Promise<InstanceType<typeof QdrantClient>> {
-  if (!qdrantClient) {
-    logger.info(`Initializing Qdrant client with URL: ${QDRANT_SERVER_URL}`);
-    qdrantClient = new QdrantClient({
-      url: QDRANT_SERVER_URL,
-      timeout: 10000, // Increased timeout
-    });
+export async function getClient(): Promise<InstanceType<typeof QdrantClient> | null> {
+  try {
+    if (!qdrantClient) {
+      logger.info(`Initializing Qdrant client with URL: ${QDRANT_SERVER_URL}`);
+      qdrantClient = new QdrantClient({
+        url: QDRANT_SERVER_URL,
+        timeout: 10000, // Increased timeout
+      });
+      
+      // Test connection
+      await qdrantClient.getCollections();
+    }
+    return qdrantClient;
+  } catch (error) {
+    logger.error('Failed to initialize Qdrant client:', error);
+    return null;
   }
-  return qdrantClient;
 }
 
-export async function getEmbedding(text: string): Promise<number[]> {
+export async function getEmbedding(text: string): Promise<number[] | null> {
   try {
     logger.info('Getting embedding for text...');
     const response = await axios.post(EMBEDDING_API_URL, { text });
@@ -65,25 +73,29 @@ export async function getEmbedding(text: string): Promise<number[]> {
     return response.data.embedding;
   } catch (error) {
     logger.error('Failed to get embedding:', error);
-    throw error;
+    return null;
   }
 }
 
 export async function ensureCollectionExists(): Promise<boolean> {
+  const client = await getClient();
+  if (!client) {
+    logger.error('Failed to get Qdrant client');
+    throw new Error('Failed to get Qdrant client');
+  }
+  
   try {
-    const client = await getClient();
-    
     // Test connection first
     logger.info('Testing Qdrant connection...');
-    const collections = await client.getCollections();
+    await client.getCollections();
     logger.info('Qdrant connection successful');
     
     try {
       logger.info(`Checking if collection ${COLLECTION_NAME} exists...`);
-      const collection = await client.getCollection(COLLECTION_NAME);
-      logger.info(`Collection ${COLLECTION_NAME} exists with config:`, collection);
+      await client.getCollection(COLLECTION_NAME);
+      logger.info(`Collection ${COLLECTION_NAME} exists`);
       return true;
-    } catch (error) {
+    } catch {
       logger.info(`Collection ${COLLECTION_NAME} does not exist, creating...`);
       await client.createCollection(COLLECTION_NAME, {
         vectors: {
@@ -177,12 +189,27 @@ export async function formatPythonCode(code: string): Promise<{ formattedCode: s
 }
 
 export async function findSimilarPatterns(code: string, language: string): Promise<SimilarPattern[]> {
+  if (!code.trim()) {
+    return [];
+  }
+
   const client = await getClient();
+  if (!client) {
+    logger.error('Failed to get Qdrant client');
+    return [];
+  }
   
   try {
-    // Use Qdrant's built-in text search functionality
-    const response = await client.search(COLLECTION_NAME, {
-      vector: [], // Empty vector for text-based search
+    // Get embedding for the code
+    const vector = await getEmbedding(code);
+    if (!vector) {
+      logger.error('Failed to get embedding for code');
+      return [];
+    }
+    
+    // Use vector search
+    const searchParams = {
+      vector: vector,
       with_payload: true,
       with_vector: false,
       filter: {
@@ -194,21 +221,14 @@ export async function findSimilarPatterns(code: string, language: string): Promi
         ],
       },
       limit: 5,
-      params: {
-        text: code, // Use text-based search
-      },
-    });
+    };
+
+    const response = await client.search(COLLECTION_NAME, searchParams);
     
     return response.map((item: SearchResultItem) => ({
-      name: item.payload && typeof item.payload.description === 'string' 
-        ? item.payload.description 
-        : 'Unnamed snippet',
-      description: item.payload && typeof item.payload.source === 'string'
-        ? item.payload.source
-        : 'No source information',
-      example: item.payload && typeof item.payload.code === 'string'
-        ? item.payload.code
-        : '',
+      name: item.payload?.description as string || 'Unnamed snippet',
+      description: item.payload?.source as string || 'No source information',
+      example: item.payload?.code as string || '',
     })) as SimilarPattern[];
   } catch (error) {
     logger.error('Similar patterns search failed:', error);

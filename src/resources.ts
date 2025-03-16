@@ -16,7 +16,7 @@ export const notes: { [id: string]: Note } = {
 // Qdrant connection setup with retry logic
 let qdrantClient: QdrantClient | null = null;
 const COLLECTION_NAME = 'mcp';
-const VECTOR_SIZE = 1536;
+const VECTOR_SIZE = 384;
 
 async function initializeQdrant() {
   let attempt = 0;
@@ -65,7 +65,7 @@ async function ensureCollectionExists() {
 // Using the server's embedding functionality
 async function getEmbeddingFromServer(text: string): Promise<number[]> {
   // Assuming embedding service is already available via an API endpoint
-  const response = await fetch(process.env.EMBEDDING_API_URL || 'http://localhost:8000/embed', {
+  const response = await fetch(process.env.EMBEDDING_API_URL || 'http://192.168.2.190:8000/embed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),

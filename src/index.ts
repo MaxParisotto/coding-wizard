@@ -8,19 +8,30 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { registerResources } from './resources.js';
 import { registerTools } from './tools.js';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { logger, addFileTransports } from './logger.js';
 import fs from 'fs';
 import path from 'path';
 
-// Ensure logs directory exists
-const logsDir = path.join(process.cwd(), config.LOG_DIR);
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+// Initialize logging
+function initializeLogging() {
+  const logsDir = path.join(process.cwd(), config.LOG_DIR);
+  try {
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true, mode: 0o755 });
+    }
+    addFileTransports(logsDir);
+    logger.info('Logging initialized successfully');
+  } catch (error) {
+    logger.error('Failed to initialize file logging, falling back to console only:', error);
+  }
 }
 
 // Enhanced server initialization with proper error handling
 async function startServer() {
   try {
+    // Initialize logging first
+    initializeLogging();
+    
     logger.info('Starting Coding Wizard MCP server...');
     
     // Create the MCP server with configuration

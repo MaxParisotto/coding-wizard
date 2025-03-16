@@ -13,12 +13,12 @@ const configSchema = z.object({
   SERVER_DESCRIPTION: z.string().default('A powerful coding assistant with code generation, analysis, and management capabilities'),
   
   // Qdrant configuration
-  QDRANT_URL: z.string().url().default('http://localhost:6333'),
+  QDRANT_URL: z.string().url().default('http://192.168.2.190:6333'),
   QDRANT_COLLECTION: z.string().default('mcp'),
-  QDRANT_VECTOR_SIZE: z.number().int().positive().default(1536),
+  QDRANT_VECTOR_SIZE: z.number().int().positive().default(384),
   
   // Embedding service configuration
-  EMBEDDING_API_URL: z.string().url().default('http://localhost:8000/embed'),
+  EMBEDDING_API_URL: z.string().url().default('http://192.168.2.190:8000/embed'),
   
   // Logging configuration
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'debug']).default('info'),
