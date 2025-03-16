@@ -1,0 +1,288 @@
+{
+    "info": {
+        "name": "Qdrant API Tests",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Health and Setup",
+            "item": [
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            }
+                        ],
+                        "url": "{{base_url}}"
+                    }
+                },
+                {
+                    "name": "List Collections",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Response has collections array\", function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.result).to.have.property('collections');",
+                                    "    pm.expect(jsonData.result.collections).to.be.an('array');",
+                                    "    console.log('Available collections:', jsonData.result.collections);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/collections"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "2. Collection Operations",
+            "item": [
+                {
+                    "name": "Create Test Collection",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Collection created successfully\", function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('ok');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"vectors\": {\n        \"size\": 1536,\n        \"distance\": \"Cosine\"\n    }\n}"
+                        },
+                        "url": "{{base_url}}/collections/test_collection"
+                    }
+                },
+                {
+                    "name": "Get Collection Info",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/collections/test_collection"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "3. Points Operations",
+            "item": [
+                {
+                    "name": "Insert Points",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test(\"Points inserted successfully\", function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('ok');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"points\": [\n        {\n            \"id\": 1,\n            \"vector\": {{testVector}},\n            \"payload\": {\n                \"text\": \"First test point\",\n                \"category\": \"test\"\n            }\n        },\n        {\n            \"id\": 2,\n            \"vector\": {{testVector}},\n            \"payload\": {\n                \"text\": \"Second test point\",\n                \"category\": \"test\"\n            }\n        }\n    ]\n}"
+                        },
+                        "url": "{{base_url}}/collections/test_collection/points"
+                    }
+                },
+                {
+                    "name": "Search Points",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"vector\": {{testVector}},\n    \"limit\": 3,\n    \"with_payload\": true,\n    \"with_vector\": false\n}"
+                        },
+                        "url": "{{base_url}}/collections/test_collection/points/search"
+                    }
+                },
+                {
+                    "name": "Get Points",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"ids\": [1, 2],\n    \"with_payload\": true,\n    \"with_vector\": false\n}"
+                        },
+                        "url": "{{base_url}}/collections/test_collection/points"
+                    }
+                },
+                {
+                    "name": "Update Points",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"points\": [\n        {\n            \"id\": 1,\n            \"vector\": {{testVector}}\n        }\n    ]\n}"
+                        },
+                        "url": "{{base_url}}/collections/test_collection/points/vectors"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "4. Cleanup",
+            "item": [
+                {
+                    "name": "Delete Points",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"points\": [1, 2]\n}"
+                        },
+                        "url": "{{base_url}}/collections/test_collection/points/delete"
+                    }
+                },
+                {
+                    "name": "Delete Collection",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "api-key",
+                                "value": "{{api_key}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/collections/test_collection"
+                    }
+                }
+            ]
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "exec": [
+                    "// Generate normalized test vector if not exists",
+                    "if (!pm.collectionVariables.get('testVector')) {",
+                    "    function generateNormalizedVector(dimension) {",
+                    "        const vector = Array.from({ length: dimension }, () => (Math.random() * 2) - 1);",
+                    "        const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));",
+                    "        return vector.map(val => val / magnitude);",
+                    "    }",
+                    "    const testVector = generateNormalizedVector(1536);",
+                    "    pm.collectionVariables.set('testVector', JSON.stringify(testVector));",
+                    "}"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "https://60d74e51-1617-415a-a1c0-229250e5be98.eu-central-1-0.aws.cloud.qdrant.io"
+        },
+        {
+            "key": "api_key",
+            "value": "your_api_key_here"
+        }
+    ]
+} 

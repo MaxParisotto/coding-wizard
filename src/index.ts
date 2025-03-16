@@ -11,6 +11,7 @@ import { config } from './config.js';
 import { logger, addFileTransports } from './logger.js';
 import fs from 'fs';
 import path from 'path';
+import { qdrantTestTool } from './tools/qdrant_test_tool.js';
 
 // Initialize logging
 function initializeLogging() {
@@ -39,6 +40,9 @@ async function startServer() {
       name: config.SERVER_NAME,
       version: config.SERVER_VERSION,
       description: config.SERVER_DESCRIPTION,
+      tools: [
+        qdrantTestTool
+      ]
     });
     
     // Initialize resources and tools with proper error handling

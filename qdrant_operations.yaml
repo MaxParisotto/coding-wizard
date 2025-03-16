@@ -1,0 +1,1040 @@
+openapi: 3.1.0
+info:
+  title: Qdrant Vector Database API
+  version: 1.0.0
+  description: |
+    Comprehensive API for Qdrant Cloud with all collection and point operations.
+    
+    API key authentication is required. Add your API key in the 'api-key' header of all requests.
+servers:
+  - url: https://60d74e51-1617-415a-a1c0-229250e5be98.eu-central-1-0.aws.cloud.qdrant.io
+
+components:
+  securitySchemes:
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: api-key
+  schemas:
+    StandardResponse:
+      type: object
+      properties:
+        result:
+          type: object
+        status:
+          type: string
+          enum: [ok]
+        time:
+          type: number
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: object
+          properties:
+            error:
+              type: string
+        time:
+          type: number
+
+security:
+  - apiKeyHeader: []
+
+paths:
+  /:
+    get:
+      summary: Check Qdrant Health
+      operationId: getHealth
+      description: Returns the health status of the Qdrant instance.
+      responses:
+        "200":
+          description: Health check successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  version:
+                    type: string
+        "400":
+          $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Unauthorized
+
+  # Collection Operations
+  /collections:
+    get:
+      summary: List Collections
+      operationId: listCollections
+      description: Retrieve a list of all available collections in Qdrant.
+      responses:
+        "200":
+          description: List of collections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      collections:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            vectors_count:
+                              type: integer
+                  status:
+                    type: string
+                    enum: [ok]
+                  time:
+                    type: number
+        "401":
+          description: Unauthorized
+
+  /collections/{collection_name}:
+    get:
+      summary: Get Collection Info
+      operationId: getCollectionInfo
+      description: Get information about a specific collection.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection to get info for
+      responses:
+        "200":
+          description: Collection information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        "404":
+          $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Create Collection
+      operationId: createCollection
+      description: Create a new collection with specified parameters.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection to create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vectors:
+                  type: object
+                  properties:
+                    size:
+                      type: integer
+                      default: 1536
+                    distance:
+                      type: string
+                      enum:
+                        - Cosine
+                        - Euclid
+                        - Dot
+                      default: Cosine
+                  required:
+                    - size
+                    - distance
+              required:
+                - vectors
+      responses:
+        "200":
+          description: Collection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        "400":
+          $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Unauthorized
+
+    delete:
+      summary: Delete Collection
+      operationId: deleteCollection
+      description: Delete an existing collection and all its data.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection to delete
+      responses:
+        "200":
+          description: Collection deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        "404":
+          $ref: '#/components/schemas/ErrorResponse'
+    
+    patch:
+      summary: Update Collection Parameters
+      operationId: updateCollection
+      description: Update parameters of an existing collection.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                optimizers_config:
+                  type: object
+                  description: Update optimizers configuration
+                replication_factor:
+                  type: integer
+                  description: Update replication factor
+      responses:
+        "200":
+          description: Collection updated successfully
+
+  # Points Operations
+  /collections/{collection_name}/points:
+    put:
+      summary: Insert Points
+      operationId: insertVectors
+      description: Insert one or more vectors into a collection.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection to insert into
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                points:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      vector:
+                        type: array
+                        description: Must be an array of exactly 1536 float values between -1.0 and 1.0
+                        items:
+                          type: number
+                          format: float
+                        minItems: 1536
+                        maxItems: 1536
+                      payload:
+                        type: object
+                    required:
+                      - id
+                      - vector
+              required:
+                - points
+      responses:
+        "200":
+          description: Points inserted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardResponse'
+        "400":
+          $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Retrieve Points
+      operationId: getPoints
+      description: Retrieve points by their IDs.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                with_payload:
+                  type: boolean
+                  default: true
+                with_vector:
+                  type: boolean
+                  default: false
+              required:
+                - ids
+      responses:
+        "200":
+          description: Retrieved points
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        payload:
+                          type: object
+                        vector:
+                          type: array
+                          items:
+                            type: number
+                  status:
+                    type: string
+                    enum: [ok]
+                  time:
+                    type: number
+
+    delete:
+      summary: Delete Points
+      operationId: deletePoints
+      description: Delete points from a collection.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                points:
+                  type: array
+                  description: Array of point IDs to delete
+                  items:
+                    type: integer
+              required:
+                - points
+      responses:
+        "200":
+          description: Points deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      operation_id:
+                        type: integer
+                      status:
+                        type: string
+                        enum: [acknowledged]
+                  status:
+                    type: string
+                    enum: [ok]
+                  time:
+                    type: number
+        "400":
+          $ref: '#/components/schemas/ErrorResponse'
+
+  /collections/{collection_name}/points/vectors:
+    put:
+      summary: Update Vectors
+      operationId: updateVectors
+      description: Update vectors of existing points.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                points:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      vector:
+                        type: array
+                        items:
+                          type: number
+                          format: float
+                        minItems: 1536
+                        maxItems: 1536
+              required:
+                - points
+      responses:
+        "200":
+          description: Vectors updated successfully
+    
+    delete:
+      summary: Delete Vectors
+      operationId: deleteVectors
+      description: Delete vectors, keeping the payload intact.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                points:
+                  type: array
+                  items:
+                    type: integer
+                filter:
+                  type: object
+              required:
+                - points
+      responses:
+        "200":
+          description: Vectors deleted successfully
+
+  /collections/{collection_name}/points/payload:
+    post:
+      summary: Set Payload
+      operationId: setPayload
+      description: Set payload for points.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  description: Payload to set
+                points:
+                  type: array
+                  items:
+                    type: integer
+                filter:
+                  type: object
+                  description: Filter condition for points
+              required:
+                - payload
+      responses:
+        "200":
+          description: Payload set successfully
+    
+    put:
+      summary: Overwrite Payload
+      operationId: overwritePayload
+      description: Overwrite payload for points.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  description: Payload to overwrite
+                points:
+                  type: array
+                  items:
+                    type: integer
+                filter:
+                  type: object
+                  description: Filter condition for points
+              required:
+                - payload
+      responses:
+        "200":
+          description: Payload overwritten successfully
+  
+  /collections/{collection_name}/points/payload/delete:
+    post:
+      summary: Delete Payload
+      operationId: deletePayload
+      description: Delete payload for points.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keys:
+                  type: array
+                  items:
+                    type: string
+                  description: Keys to delete from payload
+                points:
+                  type: array
+                  items:
+                    type: integer
+                filter:
+                  type: object
+                  description: Filter condition for points
+              required:
+                - keys
+      responses:
+        "200":
+          description: Payload deleted successfully
+  
+  /collections/{collection_name}/points/payload/clear:
+    post:
+      summary: Clear Payload
+      operationId: clearPayload
+      description: Clear payload for points.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                points:
+                  type: array
+                  items:
+                    type: integer
+                filter:
+                  type: object
+                  description: Filter condition for points
+              required:
+                - points
+      responses:
+        "200":
+          description: Payload cleared successfully
+  
+  /collections/{collection_name}/points/batch:
+    post:
+      summary: Batch Update Points
+      operationId: batchUpdatePoints
+      description: Update multiple points in batch.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operations:
+                  type: array
+                  items:
+                    type: object
+                    oneOf:
+                      - properties:
+                          upsert:
+                            type: object
+                            properties:
+                              points:
+                                type: array
+                      - properties:
+                          delete:
+                            type: object
+                            properties:
+                              points:
+                                type: array
+              required:
+                - operations
+      responses:
+        "200":
+          description: Batch update completed successfully
+  
+  /collections/{collection_name}/points/{point_id}:
+    get:
+      summary: Retrieve A Point
+      operationId: getPoint
+      description: Retrieve a specific point by ID.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+        - name: point_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            description: ID of the point to retrieve
+      responses:
+        "200":
+          description: Point data
+  
+  /collections/{collection_name}/points/scroll:
+    post:
+      summary: Scroll Points
+      operationId: scrollPoints
+      description: Scroll through points with optional filtering.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filter:
+                  type: object
+                  description: Filter condition for points
+                limit:
+                  type: integer
+                  description: Page size
+                offset:
+                  type: object
+                  description: Offset from which to continue scrolling
+                with_payload:
+                  type: boolean
+                with_vector:
+                  type: boolean
+      responses:
+        "200":
+          description: Scrolled points
+  
+  /collections/{collection_name}/points/count:
+    post:
+      summary: Count Points
+      operationId: countPoints
+      description: Count points in a collection with optional filtering.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filter:
+                  type: object
+                  description: Filter condition for points
+                exact:
+                  type: boolean
+                  description: Whether to perform exact count
+      responses:
+        "200":
+          description: Points count
+
+  # Search Operations
+  /collections/{collection_name}/points/search:
+    post:
+      summary: Search Points
+      operationId: searchVectors
+      description: Search for similar vectors in a collection.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection to search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vector:
+                  type: array
+                  description: Must be an array of exactly 1536 float values between -1.0 and 1.0
+                  items:
+                    type: number
+                    format: float
+                  minItems: 1536
+                  maxItems: 1536
+                limit:
+                  type: integer
+                  description: Number of results to return
+                  default: 10
+                offset:
+                  type: integer
+                  description: Number of results to skip
+                  default: 0
+                with_payload:
+                  type: boolean
+                  default: true
+                with_vector:
+                  type: boolean
+                  default: false
+              required:
+                - vector
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        score:
+                          type: number
+                        payload:
+                          type: object
+                        vector:
+                          type: array
+                          items:
+                            type: number
+                  status:
+                    type: string
+                    enum: [ok]
+                  time:
+                    type: number
+        "400":
+          $ref: '#/components/schemas/ErrorResponse'
+
+  /collections/{collection_name}/points/search/batch:
+    post:
+      summary: Search Batch Points
+      operationId: searchBatchPoints
+      description: Search for similar vectors in a collection with multiple search vectors.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                searches:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      vector:
+                        type: array
+                        description: "Must be an array of exactly 1536 float values between -1.0 and 1.0"
+                        items:
+                          type: number
+                          format: float
+                        minItems: 1536
+                        maxItems: 1536
+                      top:
+                        type: integer
+                      filter:
+                        type: object
+                      with_payload:
+                        type: boolean
+                      with_vector:
+                        type: boolean
+              required:
+                - searches
+      responses:
+        "200":
+          description: Batch search results
+  
+  /collections/{collection_name}/points/search/groups:
+    post:
+      summary: Search Point Groups
+      operationId: searchPointGroups
+      description: Search for point groups based on vector similarity.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vector:
+                  type: array
+                  items:
+                    type: number
+                    format: float
+                  minItems: 1536
+                  maxItems: 1536
+                group_by:
+                  type: string
+                  description: Payload field to group by
+                limit:
+                  type: integer
+                  description: Maximum number of groups
+                group_size:
+                  type: integer
+                  description: Maximum number of points per group
+                filter:
+                  type: object
+                  description: Filter condition
+              required:
+                - vector
+                - group_by
+      responses:
+        "200":
+          description: Grouped search results
+  
+  /collections/{collection_name}/points/recommend:
+    post:
+      summary: Recommend Points
+      operationId: recommendPoints
+      description: Look for the points which are closer to the positive examples and at the same time further from the negative examples.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                positive:
+                  type: array
+                  description: IDs of positive examples
+                  items:
+                    type: integer
+                negative:
+                  type: array
+                  description: IDs of negative examples
+                  items:
+                    type: integer
+                top:
+                  type: integer
+                  description: Number of most similar results to return
+                with_payload:
+                  type: boolean
+                with_vector:
+                  type: boolean
+                filter:
+                  type: object
+                  description: Filter condition for points
+              required:
+                - positive
+                - top
+      responses:
+        "200":
+          description: Recommended points
+  
+  /collections/{collection_name}/points/recommend/batch:
+    post:
+      summary: Recommend Batch Points
+      operationId: recommendBatchPoints
+      description: Batch recommendation of points.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                searches:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      positive:
+                        type: array
+                        items:
+                          type: integer
+                      negative:
+                        type: array
+                        items:
+                          type: integer
+                      top:
+                        type: integer
+                      filter:
+                        type: object
+              required:
+                - searches
+      responses:
+        "200":
+          description: Batch recommendation results
+  
+  # Indexes Operations
+  /collections/{collection_name}/index:
+    put:
+      summary: Create Payload Index
+      operationId: createPayloadIndex
+      description: Create a payload index.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                field_name:
+                  type: string
+                  description: Field name to index
+                field_schema:
+                  type: string
+                  description: Field schema type
+                  enum: [keyword, integer, float, geo]
+                wait:
+                  type: boolean
+                  description: Whether to wait for completion
+              required:
+                - field_name
+                - field_schema
+      responses:
+        "200":
+          description: Index created successfully
+    
+    delete:
+      summary: Delete Payload Index
+      operationId: deletePayloadIndex
+      description: Delete a payload index.
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The name of the collection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                field_name:
+                  type: string
+                  description: Field name to delete index for
+                wait:
+                  type: boolean
+                  description: Whether to wait for completion
+              required:
+                - field_name
+      responses:
+        "200":
+          description: Index deleted successfully
+  
+  # Aliases Operations
+  /aliases:
+    get:
+      summary: List All Aliases
+      operationId: listAllAliases
+      description: List all aliases for all collections.
+      responses:
+        "200":
+          description: List of all aliases
