@@ -1,13 +1,19 @@
-import { promisify } from "util";
-import axios, { AxiosError } from "axios";
-import fs from "fs";
-import { exec as _exec } from "child_process";
-const { QdrantClient } = await import("@qdrant/js-client-rest");
+export const CODE_GENERATION_API = process.env.CODE_GENERATION_API || 'http://localhost:8080/generate';
+export const CODE_COMPLETION_API = process.env.CODE_COMPLETION_API || 'http://localhost:8080/complete';
+import { promisify } from 'util';
+import { exec as _exec } from 'child_process';
+import { logger } from './logger.js';
+import axios from 'axios';
+const { QdrantClient } = await import('@qdrant/js-client-rest');
 
-export const QDRANT_SERVER_URL = process.env.QDRANT_SERVER_URL || 'http://localhost:6333';
-export const COLLECTION_NAME = process.env.QDRANT_COLLECTION_NAME || 'mcp';
+export const QDRANT_SERVER_URL = process.env.QDRANT_URL || 'http://192.168.2.190:6333';
+export const EMBEDDING_API_URL = process.env.EMBEDDING_API_URL || 'http://192.168.2.190:8000/embed';
+export const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'mcp';
+export const VECTOR_SIZE = parseInt(process.env.QDRANT_VECTOR_SIZE || '384', 10); // MiniLM-L6-v2 produces 384-dimensional vectors
 
 const execPromise = promisify(_exec);
+
+let qdrantClient: InstanceType<typeof QdrantClient> | null = null;
 
 type CodeAnalysisResult = {
   issues: Array<{
@@ -37,35 +43,65 @@ interface SearchResultItem {
 }
 
 // Helper function for calculating line numbers
-function getLineFromCharIndex(code: string, charIndex: number): number | undefined {
-  const lines = code.slice(0, charIndex).split('\n');
-  return lines.length - 1 || undefined; // Handle empty case
+
+export async function getClient(): Promise<InstanceType<typeof QdrantClient>> {
+  if (!qdrantClient) {
+    logger.info(`Initializing Qdrant client with URL: ${QDRANT_SERVER_URL}`);
+    qdrantClient = new QdrantClient({
+      url: QDRANT_SERVER_URL,
+      timeout: 10000, // Increased timeout
+    });
+  }
+  return qdrantClient;
 }
 
-export async function getClient() {
-  return new QdrantClient({
-    url: QDRANT_SERVER_URL,
-    timeout: 5000
-  });
+export async function getEmbedding(text: string): Promise<number[]> {
+  try {
+    logger.info('Getting embedding for text...');
+    const response = await axios.post(EMBEDDING_API_URL, { text });
+    if (!response.data || !Array.isArray(response.data.embedding)) {
+      throw new Error('Invalid embedding response format');
+    }
+    return response.data.embedding;
+  } catch (error) {
+    logger.error('Failed to get embedding:', error);
+    throw error;
+  }
 }
 
 export async function ensureCollectionExists(): Promise<boolean> {
-  const client = await getClient();
   try {
-    await client.getCollection(COLLECTION_NAME);
-    return true;
+    const client = await getClient();
+    
+    // Test connection first
+    logger.info('Testing Qdrant connection...');
+    const collections = await client.getCollections();
+    logger.info('Qdrant connection successful');
+    
+    try {
+      logger.info(`Checking if collection ${COLLECTION_NAME} exists...`);
+      const collection = await client.getCollection(COLLECTION_NAME);
+      logger.info(`Collection ${COLLECTION_NAME} exists with config:`, collection);
+      return true;
+    } catch (error) {
+      logger.info(`Collection ${COLLECTION_NAME} does not exist, creating...`);
+      await client.createCollection(COLLECTION_NAME, {
+        vectors: {
+          size: VECTOR_SIZE,
+          distance: 'Cosine',
+        },
+      });
+      logger.info(`Collection ${COLLECTION_NAME} created successfully`);
+      return true;
+    }
   } catch (error) {
-    await client.createCollection(COLLECTION_NAME, {
-      vectors: {
-        size: 768,
-        distance: "Cosine"
-      }
-    });
+    logger.error('Failed to connect to Qdrant:', error);
+    throw error;
   }
-  return true;
 }
 
 import { ESLint } from 'eslint';
+import { CodeGenerationParams } from './types.js';
 
 export async function analyzeCode(code: string, language: string): Promise<CodeAnalysisResult> {
   const issues: Array<{ severity: string; message: string; line?: number | undefined; suggestion?: string }> = [];
@@ -77,7 +113,7 @@ export async function analyzeCode(code: string, language: string): Promise<CodeA
     });
 
     const results = await eslint.lintText(code, {
-      filePath: `temp.${language === 'typescript' ? 'ts' : 'js'}`
+      filePath: `temp.${language === 'typescript' ? 'ts' : 'js'}`,
     });
 
     for (const result of results) {
@@ -86,7 +122,7 @@ export async function analyzeCode(code: string, language: string): Promise<CodeA
           severity: message.severity === 2 ? 'Error' : message.severity === 1 ? 'Warning' : 'Info',
           message: message.message,
           line: message.line,
-          suggestion: message.fix ? 'Run ESLint fix' : undefined
+          suggestion: message.fix ? 'Run ESLint fix' : undefined,
         });
       }
     }
@@ -94,18 +130,19 @@ export async function analyzeCode(code: string, language: string): Promise<CodeA
     // Add language-specific best practices
     if (language.toLowerCase() === 'javascript' || language.toLowerCase() === 'typescript') {
       bestPractices.push(
-        "Use const/let instead of var",
-        "Prefer arrow functions for callbacks",
-        "Use strict equality (===) instead of loose equality (==)"
+        'Use const/let instead of var',
+        'Prefer arrow functions for callbacks',
+        'Use strict equality (===) instead of loose equality (==)',
       );
     }
 
     return { issues, bestPractices };
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('ESLint analysis failed:', error);
     return {
       issues: [{ severity: 'Error', message: 'Code analysis failed' }],
-      bestPractices: []
+      bestPractices: [],
     };
   }
 }
@@ -143,19 +180,23 @@ export async function findSimilarPatterns(code: string, language: string): Promi
   const client = await getClient();
   
   try {
-    const dummyVector = Array(768).fill(0);
-    
+    // Use Qdrant's built-in text search functionality
     const response = await client.search(COLLECTION_NAME, {
-      vector: dummyVector,
-      limit: 5,
+      vector: [], // Empty vector for text-based search
+      with_payload: true,
+      with_vector: false,
       filter: {
         must: [
           {
-            key: "language",
-            match: { value: language }
-          }
-        ]
-      }
+            key: 'language',
+            match: { value: language },
+          },
+        ],
+      },
+      limit: 5,
+      params: {
+        text: code, // Use text-based search
+      },
     });
     
     return response.map((item: SearchResultItem) => ({
@@ -167,10 +208,114 @@ export async function findSimilarPatterns(code: string, language: string): Promi
         : 'No source information',
       example: item.payload && typeof item.payload.code === 'string'
         ? item.payload.code
-        : ''
+        : '',
     })) as SimilarPattern[];
   } catch (error) {
-    console.error('Similar patterns search failed:', error);
+    logger.error('Similar patterns search failed:', error);
     return [];
   }
+}
+
+/**
+ * Converts a natural language description to a structured
+ * prompting format for code generation.
+ */
+export function createCodeGenerationPrompt(params: CodeGenerationParams): string {
+  const { description, language, includeComments, complexity } = params;
+  
+  return `
+Generate ${language} code that ${description}
+
+Requirements:
+- Language: ${language}
+- Complexity: ${complexity}
+- Comments: ${includeComments ? 'Include detailed explanations' : 'Keep comments minimal'}
+- Follow ${language} best practices and conventions
+- Make the code modular and reusable
+- Implement proper error handling
+
+The code should be:
+- Well-structured
+- Readable
+- Efficient
+- Secure
+- Testable
+
+Additional context:
+${complexity === 'simple' ? '- Keep the solution straightforward and focused' : ''}
+${complexity === 'moderate' ? '- Balance simplicity and feature completeness' : ''}
+${complexity === 'complex' ? '- Implement a comprehensive solution with advanced features' : ''}
+  `;
+}
+
+/**
+ * Analyzes code context to improve completion suggestions
+ */
+export function analyzeCodeContext(code: string, language: string): {
+  language: string;
+  length: number;
+  imports: string[];
+  variables: string[];
+  functions: Array<{name: string, params: string[]}>;
+  classes: string[];
+} {
+  // This function would analyze code to provide better completions
+  // Detect:
+  // - Libraries/frameworks being used
+  // - Coding patterns
+  // - Variables in scope
+  // - Function signatures
+  // - Class structures
+  
+  // For now, we'll return a simplified analysis
+  const analysis: {
+    language: string;
+    length: number;
+    imports: string[];
+    variables: string[];
+    functions: Array<{name: string, params: string[]}>;
+    classes: string[];
+  } = {
+    language,
+    length: code.length,
+    imports: [] as string[],
+    variables: [] as string[],
+    functions: [] as Array<{name: string, params: string[]}>,
+    classes: [] as string[],
+  };
+  
+  // Detect imports based on language
+  if (language === 'javascript' || language === 'typescript') {
+    const importRegex = /import\s+?(?:(?:{[^}]+})|(?:[^{}]+?))\s+from\s+?['"]([^'"]+)['"]/g;
+    let match;
+    while ((match = importRegex.exec(code)) !== null) {
+      analysis.imports.push(match[1]);
+    }
+    
+    // Simple detection of functions
+    const functionRegex = /function\s+(\w+)\s*\(([^)]*)\)/g;
+    while ((match = functionRegex.exec(code)) !== null) {
+      analysis.functions.push({
+        name: match[1],
+        params: match[2].split(',').map(p => p.trim()),
+      });
+    }
+  } else if (language === 'python') {
+    const importRegex = /(?:from\s+(\S+)\s+import)|(?:import\s+([^as]+))/g;
+    let match;
+    while ((match = importRegex.exec(code)) !== null) {
+      analysis.imports.push(match[1] || match[2]);
+    }
+    
+    // Simple detection of functions
+    const functionRegex = /def\s+(\w+)\s*\(([^)]*)\)/g;
+    while ((match = functionRegex.exec(code)) !== null) {
+      analysis.functions.push({
+        name: match[1],
+        params: match[2].split(',').map(p => p.trim()),
+      });
+    }
+  }
+  
+  return analysis;
 }

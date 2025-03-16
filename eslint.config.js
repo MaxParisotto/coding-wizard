@@ -4,12 +4,17 @@ import tsParser from '@typescript-eslint/parser';
 
 export default [
   {
-    ignores: ['eslint.config.js'],
+    ignores: ['eslint.config.js', 'build/**/*'],
     files: ['**/*.js', '**/*.ts'],
     languageOptions: {
       globals: {
         process: 'readonly',
-        console: 'readonly'
+        console: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearTimeout: 'readonly',
+        clearInterval: 'readonly'
       },
       ecmaVersion: 'latest',
       sourceType: 'module',

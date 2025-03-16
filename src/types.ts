@@ -89,3 +89,23 @@ export type SimilarPattern = {
   description: string;
   example: string;
 };
+
+/**
+ * Type for code generation parameters
+ */
+export type CodeGenerationParams = {
+  description: string;
+  language: string;
+  includeComments: boolean;
+  complexity: 'simple' | 'moderate' | 'complex';
+};
+
+/**
+ * Type for code completion parameters
+ */
+export type CodeCompletionParams = {
+  code: string;
+  language: string;
+  position?: number;
+  maxTokens: number;
+};

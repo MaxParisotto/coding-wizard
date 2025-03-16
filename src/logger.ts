@@ -1,47 +1,76 @@
-import { LogLevel } from './types.js';
+import winston from 'winston';
+import path from 'path';
+import fs from 'fs';
 
-export class Logger {
-  private static instance: Logger;
-  private consoleImpl: { log: (message: string) => void; warn: (message: string) => void; error: (message: string) => void };
+// Define custom log levels
+const levels = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  http: 3,
+  debug: 4,
+};
 
-  private constructor(consoleImpl?: { log: (message: string) => void; warn: (message: string) => void; error: (message: string) => void }) {
-    this.consoleImpl = consoleImpl || console;
-  }
+// Define colors for each level
+const colors = {
+  error: 'red',
+  warn: 'yellow',
+  info: 'green',
+  http: 'magenta',
+  debug: 'white',
+};
 
-  public static getInstance(consoleImpl?: { log: (message: string) => void; warn: (message: string) => void; error: (message: string) => void }): Logger {
-    if (!Logger.instance) {
-      Logger.instance = new Logger(consoleImpl);
-    }
-    return Logger.instance;
-  }
+// Tell winston about our colors
+winston.addColors(colors);
 
-  public log(level: LogLevel, message: string): void {
-    const timestamp = new Date().toISOString();
-    const formattedMessage = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    switch (level) {
-      case LogLevel.INFO:
-        this.consoleImpl.log(formattedMessage);
-        break;
-      case LogLevel.WARN:
-        this.consoleImpl.warn(formattedMessage);
-        break;
-      case LogLevel.ERROR:
-        this.consoleImpl.error(formattedMessage);
-        break;
-      default:
-        this.consoleImpl.log(formattedMessage); // Use log as the default
-    }
-  }
+// Custom format
+const format = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
+  winston.format.colorize({ all: true }),
+  winston.format.printf(
+    (info) => `${info.timestamp} ${info.level}: ${info.message}`,
+  ),
+);
 
-  public info(message: string): void {
-    this.log(LogLevel.INFO, message);
-  }
-
-  public warn(message: string): void {
-    this.log(LogLevel.WARN, message);
-  }
-
-  public error(message: string): void {
-    this.log(LogLevel.ERROR, message);
-  }
+// Ensure logs directory exists
+const logsDir = path.join(process.cwd(), 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
 }
+
+// Define which transports the logger must use
+const transports = [
+  // Write all logs with importance level of `error` or less to `error.log`
+  new winston.transports.File({
+    filename: path.join(logsDir, 'error.log'),
+    level: 'error',
+  }),
+  // Write all logs with importance level of `debug` or less to `combined.log`
+  new winston.transports.File({
+    filename: path.join(logsDir, 'combined.log'),
+  }),
+  // Write to console with custom format
+  new winston.transports.Console({
+    format: winston.format.combine(
+      winston.format.colorize(),
+      winston.format.simple(),
+    ),
+  }),
+];
+
+// Create the logger instance
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  levels,
+  format,
+  transports,
+});
+
+// Create a stream object with a write function that will be used by Morgan
+const stream = {
+  write: (message: string) => {
+    logger.http(message.trim());
+  },
+};
+
+export { logger, stream };
