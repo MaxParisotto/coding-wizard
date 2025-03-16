@@ -35,7 +35,7 @@ const codeStatsSchema = z.object({
     recent_limit: z.number().min(1).max(10).optional().default(5)
 });
 
-async function getCodeStats(params: z.infer<typeof codeStatsSchema>): Promise<CodeStats> {
+async function getCodeStats(params: { recent_limit: number }): Promise<CodeStats> {
     // Get all points to analyze
     const response = await axios.post(
         `${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points/scroll`,
@@ -122,7 +122,9 @@ export function registerCodeStatsTool(server: McpServer): void {
             const validatedParams = validateInput(codeStatsSchema, params);
             
             try {
-                const stats = await getCodeStats(validatedParams);
+                const stats = await getCodeStats({ 
+                    recent_limit: validatedParams.recent_limit ?? 5 
+                });
                 return {
                     content: formatStats(stats)
                 };

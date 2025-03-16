@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerStoreCodeSnippetTool } from './tools/store-code-snippet/index.js';
 import { registerSearchCodeSnippetsTool } from './tools/search-code-snippets/index.js';
 import { registerCodeStatsTool } from './tools/code-stats/index.js';
+import { registerQdrantTestTool } from './tools/qdrant_test_tool.js';
 import { logger } from './logger.js';
 
 /**
@@ -25,7 +26,8 @@ export function registerTools(server: McpServer): void {
         logger.info('Code stats tool registered successfully');
 
         // Register Qdrant test tool
-        // Note: This is already registered in index.ts
+        registerQdrantTestTool(server);
+        logger.info('Qdrant test tool registered successfully');
 
         logger.info('All tools registered successfully');
     } catch (error) {

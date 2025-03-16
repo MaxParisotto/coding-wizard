@@ -1,9 +1,12 @@
 import axios, { AxiosError } from 'axios';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 
 interface QdrantTestConfig {
     baseUrl: string;
     apiKey: string;
+    vectorSize?: number;
+    skipCleanup?: boolean;
+    testTimeout?: number;
 }
 
 interface TestResult {
@@ -21,10 +24,33 @@ class QdrantTester {
     private config: QdrantTestConfig;
     private testCollectionName: string;
     private testResults: TestResult[] = [];
+    private testTimeout: NodeJS.Timeout | null = null;
 
     constructor(config: QdrantTestConfig) {
-        this.config = config;
+        this.config = {
+            ...config,
+            vectorSize: config.vectorSize || 384,
+            skipCleanup: config.skipCleanup || false,
+            testTimeout: config.testTimeout || 30000
+        };
         this.testCollectionName = `test_collection_${Date.now()}`;
+        this.setupTestTimeout();
+    }
+
+    private setupTestTimeout() {
+        if (this.config.testTimeout) {
+            this.testTimeout = setTimeout(() => {
+                logger.error(`Test suite timed out after ${this.config.testTimeout}ms`);
+                process.exit(1);
+            }, this.config.testTimeout);
+        }
+    }
+
+    private clearTestTimeout() {
+        if (this.testTimeout) {
+            clearTimeout(this.testTimeout);
+            this.testTimeout = null;
+        }
     }
 
     private get axiosConfig() {
@@ -36,8 +62,9 @@ class QdrantTester {
         };
     }
 
-    private generateVector(dimension: number = 1536): number[] {
-        const vector = Array.from({ length: dimension }, () => (Math.random() * 2) - 1);
+    private generateVector(dimension?: number): number[] {
+        const size = dimension || this.config.vectorSize || 384;
+        const vector = Array.from({ length: size }, () => (Math.random() * 2) - 1);
         const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
         return vector.map(val => val / magnitude);
     }
@@ -59,7 +86,11 @@ class QdrantTester {
     }
 
     async runTests() {
-        logger.info('Starting Qdrant API tests...');
+        logger.info('Starting Qdrant API tests...', {
+            baseUrl: this.config.baseUrl,
+            testCollection: this.testCollectionName,
+            vectorSize: this.config.vectorSize
+        });
         
         try {
             // Basic Connectivity Tests
@@ -88,7 +119,10 @@ class QdrantTester {
             logger.error('Test suite failed:', error);
             return false;
         } finally {
-            await this.cleanup();
+            this.clearTestTimeout();
+            if (!this.config.skipCleanup) {
+                await this.cleanup();
+            }
         }
     }
 
@@ -122,7 +156,7 @@ class QdrantTester {
                 `${this.config.baseUrl}/collections/${this.testCollectionName}`,
                 {
                     vectors: {
-                        size: 1536,
+                        size: this.config.vectorSize,
                         distance: 'Cosine'
                     }
                 },
@@ -309,6 +343,8 @@ class QdrantTester {
         logger.info(`Total Tests: ${total}`);
         logger.info(`Passed: ${passed}`);
         logger.info(`Failed: ${failed}`);
+        logger.info(`Vector Size: ${this.config.vectorSize}`);
+        logger.info(`Collection: ${this.testCollectionName}`);
 
         if (failed > 0) {
             logger.error('\nFailed Tests:');
@@ -321,6 +357,11 @@ class QdrantTester {
     }
 
     private async cleanup() {
+        if (this.config.skipCleanup) {
+            logger.info('Skipping cleanup as requested');
+            return;
+        }
+
         try {
             logger.info('Cleaning up test data...');
             await axios.delete(

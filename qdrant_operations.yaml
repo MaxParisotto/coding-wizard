@@ -142,7 +142,7 @@ paths:
                   properties:
                     size:
                       type: integer
-                      default: 1536
+                      default: 512
                     distance:
                       type: string
                       enum:
@@ -245,12 +245,12 @@ paths:
                         type: integer
                       vector:
                         type: array
-                        description: Must be an array of exactly 1536 float values between -1.0 and 1.0
+                        description: Must be an array of exactly 512 float values between -1.0 and 1.0
                         items:
                           type: number
                           format: float
-                        minItems: 1536
-                        maxItems: 1536
+                        minItems: 512
+                        maxItems: 512
                       payload:
                         type: object
                     required:
@@ -403,8 +403,8 @@ paths:
                         items:
                           type: number
                           format: float
-                        minItems: 1536
-                        maxItems: 1536
+                        minItems: 512
+                        maxItems: 512
               required:
                 - points
       responses:
@@ -579,48 +579,31 @@ paths:
         "200":
           description: Payload cleared successfully
   
-  /collections/{collection_name}/points/batch:
-    post:
-      summary: Batch Update Points
-      operationId: batchUpdatePoints
-      description: Update multiple points in batch.
-      parameters:
-        - name: collection_name
-          in: path
-          required: true
-          schema:
-            type: string
-            description: The name of the collection
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                operations:
-                  type: array
-                  items:
-                    type: object
-                    oneOf:
-                      - properties:
-                          upsert:
-                            type: object
-                            properties:
-                              points:
-                                type: array
-                      - properties:
-                          delete:
-                            type: object
-                            properties:
-                              points:
-                                type: array
-              required:
-                - operations
+  /telemetry:
+    get:
+      summary: Get Telemetry Data
+      operationId: getTelemetry
+      description: Retrieves detailed telemetry information about the Qdrant instance, including memory usage, disk status, and request statistics.
       responses:
         "200":
-          description: Batch update completed successfully
-  
+          description: Telemetry data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  memory_usage:
+                    type: object
+                    description: Memory usage statistics
+                  disk_usage:
+                    type: object
+                    description: Disk usage statistics
+                  request_counters:
+                    type: object
+                    description: API request counters
+        "400":
+          $ref: '#/components/schemas/ErrorResponse'
+ 
   /collections/{collection_name}/points/{point_id}:
     get:
       summary: Retrieve A Point
@@ -730,12 +713,12 @@ paths:
               properties:
                 vector:
                   type: array
-                  description: Must be an array of exactly 1536 float values between -1.0 and 1.0
+                  description: Must be an array of exactly 512 float values between -1.0 and 1.0
                   items:
                     type: number
                     format: float
-                  minItems: 1536
-                  maxItems: 1536
+                  minItems: 512
+                  maxItems: 512
                 limit:
                   type: integer
                   description: Number of results to return
@@ -809,12 +792,12 @@ paths:
                     properties:
                       vector:
                         type: array
-                        description: "Must be an array of exactly 1536 float values between -1.0 and 1.0"
+                        description: "Must be an array of exactly 512 float values between -1.0 and 1.0"
                         items:
                           type: number
                           format: float
-                        minItems: 1536
-                        maxItems: 1536
+                        minItems: 512
+                        maxItems: 512
                       top:
                         type: integer
                       filter:
@@ -853,8 +836,8 @@ paths:
                   items:
                     type: number
                     format: float
-                  minItems: 1536
-                  maxItems: 1536
+                  minItems: 512
+                  maxItems: 512
                 group_by:
                   type: string
                   description: Payload field to group by

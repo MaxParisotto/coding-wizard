@@ -9,7 +9,7 @@ import {
     getEmbedding,
 } from '../../utils.js';
 import { logger } from '../../logger.js';
-import { validateInput, formatResponse } from '../common/types.js';
+import { validateInput } from '../common/types.js';
 
 interface QdrantPayload {
     type: string;
@@ -20,6 +20,14 @@ interface QdrantPayload {
     tags?: string[];
     searchableText: string;
 }
+
+const storeCodeSnippetSchema = z.object({
+    code: z.string(),
+    description: z.string().optional().default(''),
+    language: z.string().optional().default('JavaScript'),
+    source: z.string().optional().default(''),
+    tags: z.array(z.string()).optional().default([])
+});
 
 async function storeInQdrant(payload: QdrantPayload) {
     await ensureCollectionExists();
@@ -48,7 +56,7 @@ async function storeInQdrant(payload: QdrantPayload) {
         },
         {
             headers: {
-                'api-key': QDRANT_API_KEY,
+                ...(QDRANT_API_KEY ? { 'api-key': QDRANT_API_KEY } : {}),
                 'Content-Type': 'application/json'
             }
         }
@@ -57,38 +65,43 @@ async function storeInQdrant(payload: QdrantPayload) {
     return { id, timestamp };
 }
 
-const storeCodeSnippetSchema = z.object({
-    code: z.string(),
-    description: z.string().optional().default(''),
-    language: z.string().optional().default('JavaScript'),
-    source: z.string().optional().default(''),
-    tags: z.array(z.string()).optional().default([])
-});
-
 export function registerStoreCodeSnippetTool(server: McpServer): void {
     server.tool(
         'store_code_snippet',
         'Stores a code snippet in the Qdrant vector database',
         storeCodeSnippetSchema.shape,
-        async (params: z.infer<typeof storeCodeSnippetSchema>) => {
+        async (params: z.infer<typeof storeCodeSnippetSchema>, _extra) => {
             const validatedParams = validateInput(storeCodeSnippetSchema, params);
 
-            const searchableText = [
-                validatedParams.code,
-                validatedParams.description,
-                ...(validatedParams.tags || [])
-            ].join(' ');
+            try {
+                const searchableText = [
+                    validatedParams.code,
+                    validatedParams.description,
+                    ...(validatedParams.tags || [])
+                ].join(' ');
 
-            await storeInQdrant({
-                type: 'code_snippet',
-                ...validatedParams,
-                searchableText
-            });
+                await storeInQdrant({
+                    type: 'code_snippet',
+                    ...validatedParams,
+                    searchableText
+                });
 
-            return formatResponse({
-                title: 'Code Snippet Stored',
-                content: ['Successfully stored the code snippet in the database.']
-            });
+                return {
+                    content: [{ 
+                        type: "text", 
+                        text: 'Successfully stored the code snippet in the database.' 
+                    }]
+                };
+            } catch (error) {
+                logger.error('Failed to store code snippet:', error);
+                return {
+                    content: [{ 
+                        type: "text", 
+                        text: 'Failed to store the code snippet. Please try again.' 
+                    }],
+                    isError: true
+                };
+            }
         }
     );
 } 

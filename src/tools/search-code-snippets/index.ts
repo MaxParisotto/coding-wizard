@@ -8,7 +8,7 @@ import {
     getEmbedding,
 } from '../../utils.js';
 import { logger } from '../../logger.js';
-import { validateInput, formatResponse } from '../common/types.js';
+import { validateInput } from '../common/types.js';
 
 interface SearchResult {
     id: number;
@@ -23,6 +23,13 @@ interface SearchResult {
     };
 }
 
+interface QdrantFilter {
+    must: Array<{
+        key: string;
+        match: { value: string } | { any: string[] };
+    }>;
+}
+
 const searchCodeSnippetsSchema = z.object({
     query: z.string(),
     limit: z.number().min(1).max(20).optional().default(5),
@@ -31,7 +38,15 @@ const searchCodeSnippetsSchema = z.object({
     min_score: z.number().min(0).max(1).optional().default(0.7)
 });
 
-async function searchInQdrant(params: z.infer<typeof searchCodeSnippetsSchema>) {
+interface SearchParams {
+    query: string;
+    limit: number;
+    min_score: number;
+    filter_language?: string;
+    filter_tags?: string[];
+}
+
+async function searchInQdrant(params: SearchParams) {
     const { query, limit, filter_language, filter_tags, min_score } = params;
     
     // Get embedding for the search query
@@ -41,7 +56,7 @@ async function searchInQdrant(params: z.infer<typeof searchCodeSnippetsSchema>) 
     }
 
     // Build filter conditions
-    const filter: Record<string, unknown> = {
+    const filter: QdrantFilter = {
         must: []
     };
 
@@ -70,7 +85,7 @@ async function searchInQdrant(params: z.infer<typeof searchCodeSnippetsSchema>) 
         },
         {
             headers: {
-                'api-key': QDRANT_API_KEY,
+                ...(QDRANT_API_KEY ? { 'api-key': QDRANT_API_KEY } : {}),
                 'Content-Type': 'application/json'
             }
         }
@@ -79,12 +94,12 @@ async function searchInQdrant(params: z.infer<typeof searchCodeSnippetsSchema>) 
     return response.data.result as SearchResult[];
 }
 
-function formatSearchResults(results: SearchResult[]): string[] {
+function formatSearchResults(results: SearchResult[]): { type: "text"; text: string }[] {
     if (results.length === 0) {
-        return ['No matching code snippets found.'];
+        return [{ type: "text", text: 'No matching code snippets found.' }];
     }
 
-    return results.map(result => {
+    const formattedResults = results.map(result => {
         const { code, language, description, tags, created_at } = result.payload;
         const score = (result.score * 100).toFixed(1);
         
@@ -100,6 +115,8 @@ function formatSearchResults(results: SearchResult[]): string[] {
             '---'
         ].filter(Boolean).join('\n');
     });
+
+    return [{ type: "text", text: formattedResults.join('\n\n') }];
 }
 
 export function registerSearchCodeSnippetsTool(server: McpServer): void {
@@ -107,19 +124,26 @@ export function registerSearchCodeSnippetsTool(server: McpServer): void {
         'search_code_snippets',
         'Search for code snippets using semantic search',
         searchCodeSnippetsSchema.shape,
-        async (params: z.infer<typeof searchCodeSnippetsSchema>) => {
+        async (params: z.infer<typeof searchCodeSnippetsSchema>, _extra) => {
             const validatedParams = validateInput(searchCodeSnippetsSchema, params);
             
             try {
-                const results = await searchInQdrant(validatedParams);
-                
-                return formatResponse({
-                    title: 'Search Results',
-                    content: formatSearchResults(results)
+                const results = await searchInQdrant({
+                    query: validatedParams.query,
+                    limit: validatedParams.limit ?? 5,
+                    min_score: validatedParams.min_score ?? 0.7,
+                    filter_language: validatedParams.filter_language,
+                    filter_tags: validatedParams.filter_tags
                 });
+                return {
+                    content: formatSearchResults(results)
+                };
             } catch (error) {
                 logger.error('Failed to search code snippets:', error);
-                throw new Error('Failed to search code snippets. Please try again.');
+                return {
+                    content: [{ type: "text", text: 'Failed to search code snippets. Please try again.' }],
+                    isError: true
+                };
             }
         }
     );
