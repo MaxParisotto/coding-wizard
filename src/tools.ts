@@ -8,7 +8,9 @@ import {
   ensureCollectionExists,
   QDRANT_SERVER_URL,
   COLLECTION_NAME,
+  getEmbedding,
 } from './utils.js';
+import { logger } from './logger.js';
 
 interface QdrantPayload {
   type: string;
@@ -92,12 +94,19 @@ function formatResponse(options: {
 async function storeInQdrant(payload: QdrantPayload) {
   await ensureCollectionExists();
   
-  const id = Date.now().toString() + Math.floor(Math.random() * 10000).toString();
+  // Get embedding for the code
+  const vector = await getEmbedding(payload.code || '');
+  if (!vector) {
+    throw new Error('Failed to get embedding for code');
+  }
+  
+  const id = Date.now();
   const timestamp = new Date().toISOString();
   
   await axios.put(`${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`, {
     points: [{
       id,
+      vector,
       payload: {
         ...payload,
         id,
@@ -131,33 +140,44 @@ export function registerTools(server: McpServer): void {
     'Stores a code snippet in the Qdrant vector database',
     codeSnippetSchema.shape,
     async (args: unknown) => {
-      const { code, language = 'JavaScript', description = '', source = '', tags = [] } = 
-        validateInput(codeSnippetSchema, args);
+      try {
+        const { code, language = 'JavaScript', description = '', source = '', tags = [] } = 
+          validateInput(codeSnippetSchema, args);
 
-      const payload: QdrantPayload = {
-        type: 'code_snippet',
-        code,
-        language,
-        description,
-        source,
-        tags,
-        searchableText: `${language} ${description} ${source} ${tags.join(' ')} ${code.substring(0, 1000)}`,
-      };
+        const payload: QdrantPayload = {
+          type: 'code_snippet',
+          code,
+          language,
+          description,
+          source,
+          tags,
+          searchableText: `${language} ${description} ${source} ${tags.join(' ')} ${code.substring(0, 1000)}`,
+        };
 
-      const result = await storeInQdrant(payload);
-      
-      return formatResponse({
-        title: `✅ Successfully stored ${language} code snippet`,
-        content: [
-          `ID: ${result.id}`,
-          `Description: ${description || 'N/A'}`,
-          `Tags: ${tags.length > 0 ? tags.join(', ') : 'None'}`,
-          `Source: ${source || 'N/A'}`,
-          `Created: ${result.timestamp}`,
-          '\nYou can retrieve this snippet later using:',
-          '- search_code_snippets with a relevant query',
-        ],
-      });
+        const result = await storeInQdrant(payload);
+        
+        return formatResponse({
+          title: `✅ Successfully stored ${language} code snippet`,
+          content: [
+            `ID: ${result.id}`,
+            `Description: ${description || 'N/A'}`,
+            `Tags: ${tags.length > 0 ? tags.join(', ') : 'None'}`,
+            `Source: ${source || 'N/A'}`,
+            `Created: ${result.timestamp}`,
+            '\nYou can retrieve this snippet later using:',
+            '- search_code_snippets with a relevant query',
+          ],
+        });
+      } catch (error) {
+        logger.error('Failed to store code snippet:', error);
+        return formatResponse({
+          title: '❌ Failed to store code snippet',
+          content: [
+            `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            'Please try again or contact support if the issue persists.',
+          ],
+        });
+      }
     },
   );
 
