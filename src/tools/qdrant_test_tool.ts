@@ -1,6 +1,24 @@
-import { MCPTool } from '@modelcontextprotocol/sdk';
-import { testQdrantAPI } from './qdrant_test';
-import { logger } from '../utils/logger';
+import { testQdrantAPI } from './qdrant_test.js';
+import { logger } from '../utils/logger.js';
+
+interface HandlerParams {
+    baseUrl: string;
+    apiKey: string;
+}
+
+interface MCPTool {
+    name: string;
+    description: string;
+    parameters: {
+        type: string;
+        properties: Record<string, unknown>;
+        required: string[];
+    };
+    handler: (params: HandlerParams) => Promise<{
+        success: boolean;
+        message: string;
+    }>;
+}
 
 export const qdrantTestTool: MCPTool = {
     name: 'qdrant_test',
@@ -19,7 +37,7 @@ export const qdrantTestTool: MCPTool = {
         },
         required: ['baseUrl', 'apiKey']
     },
-    handler: async ({ baseUrl, apiKey }) => {
+    handler: async ({ baseUrl, apiKey }: HandlerParams) => {
         logger.info('Starting Qdrant API test suite...');
         
         try {
@@ -30,11 +48,12 @@ export const qdrantTestTool: MCPTool = {
                     ? 'All Qdrant API tests completed successfully! 🎉' 
                     : 'Some tests failed. Check the logs for details.'
             };
-        } catch (error) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             logger.error('Error running Qdrant tests:', error);
             return {
                 success: false,
-                message: `Test suite failed: ${error.message}`
+                message: `Test suite failed: ${errorMessage}`
             };
         }
     }
