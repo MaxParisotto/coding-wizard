@@ -4,7 +4,6 @@ import { testQdrantAPI } from './qdrant_test.js';
 import { logger } from '../logger.js';
 import { config } from '../config.js';
 import { validateInput } from './common/types.js';
-import { definePlugin } from '@cline/core';
 
 export const qdrantTestSchema = z.object({
     baseUrl: z.string().url().default('http://192.168.2.190:6333'),
@@ -14,29 +13,31 @@ export const qdrantTestSchema = z.object({
     testTimeout: z.number().positive().default(30000),
 });
 
+export type QdrantTestParams = z.infer<typeof qdrantTestSchema>;
+
 export function registerQdrantTestTool(server: McpServer): void {
     server.tool(
         'coding_wizard_qdrant_test',
         'Run a comprehensive test suite for the Qdrant API',
         qdrantTestSchema.shape,
-        async (params: z.infer<typeof qdrantTestSchema>, _extra) => {
+        async (params: QdrantTestParams, _extra) => {
             const validatedParams = validateInput(qdrantTestSchema, params);
             logger.info('Starting Qdrant API test suite...', { 
-                baseUrl: validatedParams.baseUrl,
-                vectorSize: validatedParams.vectorSize,
-                skipCleanup: validatedParams.skipCleanup,
-                testTimeout: validatedParams.testTimeout,
+                baseUrl: validatedParams.baseUrl || 'http://192.168.2.190:6333',
+                vectorSize: validatedParams.vectorSize || 512,
+                skipCleanup: validatedParams.skipCleanup || false,
+                testTimeout: validatedParams.testTimeout || 30000,
                 hasApiKey: !!validatedParams.apiKey
             });
             
             try {
                 const startTime = Date.now();
                 const success = await testQdrantAPI({
-                    baseUrl: validatedParams.baseUrl,
+                    baseUrl: validatedParams.baseUrl || 'http://192.168.2.190:6333',
                     apiKey: validatedParams.apiKey || '',
-                    vectorSize: validatedParams.vectorSize,
-                    skipCleanup: validatedParams.skipCleanup,
-                    testTimeout: validatedParams.testTimeout
+                    vectorSize: validatedParams.vectorSize || 512,
+                    skipCleanup: validatedParams.skipCleanup || false,
+                    testTimeout: validatedParams.testTimeout || 30000
                 });
                 const duration = Date.now() - startTime;
 
@@ -73,13 +74,4 @@ export function registerQdrantTestTool(server: McpServer): void {
     );
 }
 
-export default definePlugin((builder) => {
-    builder.addTool('coding_wizard_qdrant_test', {
-        description: 'Run a comprehensive test suite for the Qdrant API',
-        schema: qdrantTestSchema,
-        handler: async (input) => {
-            const { default: testQdrantAPI } = await import('./qdrant_test');
-            return testQdrantAPI(input);
-        },
-    });
-}); 
+export default registerQdrantTestTool; 
