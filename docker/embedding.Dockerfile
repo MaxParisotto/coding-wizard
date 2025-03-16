@@ -24,7 +24,7 @@ WORKDIR /app
 COPY embedding_server.py .
 
 # Download and cache the model during build
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
 
 # Expose the service port
 EXPOSE 8000

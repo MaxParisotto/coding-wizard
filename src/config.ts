@@ -16,7 +16,7 @@ const configSchema = z.object({
   QDRANT_URL: z.string().url().default('http://192.168.2.190:6333'),
   QDRANT_API_KEY: z.string().optional(),
   QDRANT_COLLECTION: z.string().default('mcp'),
-  QDRANT_VECTOR_SIZE: z.number().int().positive().default(512),
+  QDRANT_VECTOR_SIZE: z.number().int().positive().default(768),
   
   // Embedding service configuration
   EMBEDDING_API_URL: z.string().url().default('http://192.168.2.190:8000/embed'),

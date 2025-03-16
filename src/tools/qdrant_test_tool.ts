@@ -8,7 +8,7 @@ import { validateInput } from './common/types.js';
 export const qdrantTestSchema = z.object({
     baseUrl: z.string().url().default('http://192.168.2.190:6333'),
     apiKey: z.string().optional(),
-    vectorSize: z.number().positive().default(512),
+    vectorSize: z.number().positive().default(768),
     skipCleanup: z.boolean().default(false),
     testTimeout: z.number().positive().default(30000),
 });
@@ -24,7 +24,7 @@ export function registerQdrantTestTool(server: McpServer): void {
             const validatedParams = validateInput(qdrantTestSchema, params);
             logger.info('Starting Qdrant API test suite...', { 
                 baseUrl: validatedParams.baseUrl || 'http://192.168.2.190:6333',
-                vectorSize: validatedParams.vectorSize || 512,
+                vectorSize: validatedParams.vectorSize || 768,
                 skipCleanup: validatedParams.skipCleanup || false,
                 testTimeout: validatedParams.testTimeout || 30000,
                 hasApiKey: !!validatedParams.apiKey
@@ -35,7 +35,7 @@ export function registerQdrantTestTool(server: McpServer): void {
                 const success = await testQdrantAPI({
                     baseUrl: validatedParams.baseUrl || 'http://192.168.2.190:6333',
                     apiKey: validatedParams.apiKey || '',
-                    vectorSize: validatedParams.vectorSize || 512,
+                    vectorSize: validatedParams.vectorSize || 768,
                     skipCleanup: validatedParams.skipCleanup || false,
                     testTimeout: validatedParams.testTimeout || 30000
                 });

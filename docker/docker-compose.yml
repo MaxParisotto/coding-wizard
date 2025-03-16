@@ -18,7 +18,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+      - MODEL_NAME=sentence-transformers/all-mpnet-base-v2
     networks:
       - mcp_network
     depends_on:
