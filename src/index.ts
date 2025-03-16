@@ -39,40 +39,24 @@ async function startServer() {
     const server = new McpServer({
       name: config.SERVER_NAME,
       version: config.SERVER_VERSION,
-      description: config.SERVER_DESCRIPTION,
-      tools: [
-        qdrantTestTool
-      ]
+      description: config.SERVER_DESCRIPTION
     });
     
     // Initialize resources and tools with proper error handling
     try {
       await registerResources(server);
-      logger.info('Resources registered successfully');
+      await registerTools(server);  // Register all tools including coding wizard tools
+      
+      // Set up the transport and start the server
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      
+      logger.info('Server started successfully');
     } catch (error) {
-      logger.error('Failed to register resources:', error);
-      throw error;
+      logger.error('Failed to initialize server:', error);
+      process.exit(1);
     }
 
-    try {
-      registerTools(server);
-      logger.info('Tools registered successfully');
-    } catch (error) {
-      logger.error('Failed to register tools:', error);
-      throw error;
-    }
-    
-    // Log initialization details
-    logger.info('Server initialized with configuration:');
-    logger.info(`- Environment: ${config.NODE_ENV}`);
-    logger.info(`- Qdrant URL: ${config.QDRANT_URL}`);
-    logger.info(`- Embedding API: ${config.EMBEDDING_API_URL}`);
-    
-    // Start the server with proper error handling
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    logger.info('Server connected to stdio transport');
-    
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
       logger.info('Received SIGINT signal, shutting down...');

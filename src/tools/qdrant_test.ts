@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger.js';
 
 interface QdrantTestConfig {
@@ -6,9 +6,21 @@ interface QdrantTestConfig {
     apiKey: string;
 }
 
+interface TestResult {
+    passed: boolean;
+    description: string;
+    error?: string;
+}
+
+interface QdrantCollection {
+    name: string;
+    [key: string]: unknown;
+}
+
 class QdrantTester {
     private config: QdrantTestConfig;
     private testCollectionName: string;
+    private testResults: TestResult[] = [];
 
     constructor(config: QdrantTestConfig) {
         this.config = config;
@@ -30,123 +42,287 @@ class QdrantTester {
         return vector.map(val => val / magnitude);
     }
 
+    private async runTest(description: string, testFn: () => Promise<void>): Promise<TestResult> {
+        try {
+            await testFn();
+            const result = { passed: true, description };
+            this.testResults.push(result);
+            logger.info(`✅ ${description}`);
+            return result;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const result = { passed: false, description, error: errorMessage };
+            this.testResults.push(result);
+            logger.error(`❌ ${description}:`, errorMessage);
+            return result;
+        }
+    }
+
     async runTests() {
         logger.info('Starting Qdrant API tests...');
         
         try {
-            // 1. Health Check
+            // Basic Connectivity Tests
             await this.testHealthCheck();
+            await this.testAuthentication();
 
-            // 2. Collections Operations
+            // Collection Tests
             await this.testCollectionOperations();
+            await this.testCollectionValidation();
 
-            // 3. Points Operations
+            // Point Tests
             await this.testPointOperations();
+            await this.testPointValidation();
+            await this.testSearchOperations();
 
-            logger.info('All tests completed successfully! 🎉');
-            return true;
+            // Advanced Tests
+            await this.testConcurrentOperations();
+            await this.testErrorHandling();
+
+            // Results Summary
+            this.logTestSummary();
+            
+            const allPassed = this.testResults.every(result => result.passed);
+            return allPassed;
         } catch (error) {
             logger.error('Test suite failed:', error);
             return false;
         } finally {
-            // Cleanup
             await this.cleanup();
         }
     }
 
     private async testHealthCheck() {
-        logger.info('Testing Health Check endpoint...');
-        const response = await axios.get(this.config.baseUrl, this.axiosConfig);
-        if (response.status !== 200) {
-            throw new Error('Health check failed');
-        }
-        logger.info('✅ Health check passed');
+        await this.runTest('Health Check', async () => {
+            const response = await axios.get(this.config.baseUrl, this.axiosConfig);
+            if (response.status !== 200) {
+                throw new Error(`Health check failed with status ${response.status}`);
+            }
+        });
+    }
+
+    private async testAuthentication() {
+        await this.runTest('Authentication Validation', async () => {
+            try {
+                await axios.get(this.config.baseUrl, {
+                    headers: { 'api-key': 'invalid_key' }
+                });
+                throw new Error('Invalid API key was accepted');
+            } catch (error) {
+                if (!(error instanceof AxiosError) || error.response?.status !== 401) {
+                    throw new Error('Authentication validation failed');
+                }
+            }
+        });
     }
 
     private async testCollectionOperations() {
-        logger.info('Testing Collection Operations...');
+        await this.runTest('Collection Creation', async () => {
+            const response = await axios.put(
+                `${this.config.baseUrl}/collections/${this.testCollectionName}`,
+                {
+                    vectors: {
+                        size: 1536,
+                        distance: 'Cosine'
+                    }
+                },
+                this.axiosConfig
+            );
+            if (response.status !== 200) {
+                throw new Error('Collection creation failed');
+            }
+        });
 
-        // List collections (initial)
-        const listResponse = await axios.get(`${this.config.baseUrl}/collections`, this.axiosConfig);
-        logger.info('Current collections:', listResponse.data.result.collections);
+        await this.runTest('Collection Listing', async () => {
+            const response = await axios.get(`${this.config.baseUrl}/collections`, this.axiosConfig);
+            const collections = response.data.result.collections as QdrantCollection[];
+            if (!collections.some((c: QdrantCollection) => c.name === this.testCollectionName)) {
+                throw new Error('Created collection not found in list');
+            }
+        });
+    }
 
-        // Create collection
-        const createResponse = await axios.put(
-            `${this.config.baseUrl}/collections/${this.testCollectionName}`,
-            {
-                vectors: {
-                    size: 1536,
-                    distance: 'Cosine'
+    private async testCollectionValidation() {
+        await this.runTest('Collection Configuration Validation', async () => {
+            try {
+                await axios.put(
+                    `${this.config.baseUrl}/collections/invalid_collection`,
+                    {
+                        vectors: {
+                            size: -1, // Invalid size
+                            distance: 'InvalidDistance'
+                        }
+                    },
+                    this.axiosConfig
+                );
+                throw new Error('Invalid collection configuration was accepted');
+            } catch (error) {
+                if (!(error instanceof AxiosError) || error.response?.status !== 400) {
+                    throw error;
                 }
-            },
-            this.axiosConfig
-        );
-        if (createResponse.status !== 200) {
-            throw new Error('Collection creation failed');
-        }
-        logger.info(`✅ Collection "${this.testCollectionName}" created`);
-
-        // Get collection info
-        const infoResponse = await axios.get(
-            `${this.config.baseUrl}/collections/${this.testCollectionName}`,
-            this.axiosConfig
-        );
-        logger.info('Collection info:', infoResponse.data);
+            }
+        });
     }
 
     private async testPointOperations() {
-        logger.info('Testing Point Operations...');
-
         const testPoints = [
             {
                 id: 1,
                 vector: this.generateVector(),
-                payload: { text: "First test point" }
+                payload: { text: "First test point", tags: ["test"] }
             },
             {
                 id: 2,
                 vector: this.generateVector(),
-                payload: { text: "Second test point" }
+                payload: { text: "Second test point", tags: ["test"] }
             }
         ];
 
-        // Insert points
-        const insertResponse = await axios.put(
-            `${this.config.baseUrl}/collections/${this.testCollectionName}/points`,
-            { points: testPoints },
-            this.axiosConfig
-        );
-        logger.info('✅ Points inserted');
+        await this.runTest('Point Insertion', async () => {
+            const response = await axios.put(
+                `${this.config.baseUrl}/collections/${this.testCollectionName}/points`,
+                { points: testPoints },
+                this.axiosConfig
+            );
+            if (response.status !== 200) {
+                throw new Error('Point insertion failed');
+            }
+        });
 
-        // Search points
-        const searchResponse = await axios.post(
-            `${this.config.baseUrl}/collections/${this.testCollectionName}/points/search`,
-            {
-                vector: this.generateVector(),
-                limit: 3,
-                with_payload: true
-            },
-            this.axiosConfig
-        );
-        logger.info('Search results:', searchResponse.data.result);
+        await this.runTest('Point Retrieval', async () => {
+            const response = await axios.post(
+                `${this.config.baseUrl}/collections/${this.testCollectionName}/points`,
+                {
+                    ids: [1, 2],
+                    with_payload: true
+                },
+                this.axiosConfig
+            );
+            if (response.data.result.length !== 2) {
+                throw new Error('Not all points were retrieved');
+            }
+        });
+    }
 
-        // Get points
-        const getResponse = await axios.post(
-            `${this.config.baseUrl}/collections/${this.testCollectionName}/points`,
-            {
-                ids: [1, 2],
-                with_payload: true
-            },
-            this.axiosConfig
-        );
-        logger.info('Retrieved points:', getResponse.data.result);
+    private async testPointValidation() {
+        await this.runTest('Point Data Validation', async () => {
+            try {
+                await axios.put(
+                    `${this.config.baseUrl}/collections/${this.testCollectionName}/points`,
+                    {
+                        points: [{
+                            id: 'invalid', // Invalid ID type
+                            vector: [1], // Invalid vector size
+                            payload: null
+                        }]
+                    },
+                    this.axiosConfig
+                );
+                throw new Error('Invalid point data was accepted');
+            } catch (error) {
+                if (!(error instanceof AxiosError) || error.response?.status !== 400) {
+                    throw error;
+                }
+            }
+        });
+    }
+
+    private async testSearchOperations() {
+        await this.runTest('Vector Search', async () => {
+            const response = await axios.post(
+                `${this.config.baseUrl}/collections/${this.testCollectionName}/points/search`,
+                {
+                    vector: this.generateVector(),
+                    limit: 3,
+                    with_payload: true
+                },
+                this.axiosConfig
+            );
+            if (!Array.isArray(response.data.result)) {
+                throw new Error('Search results are not in expected format');
+            }
+        });
+
+        await this.runTest('Filtered Search', async () => {
+            const response = await axios.post(
+                `${this.config.baseUrl}/collections/${this.testCollectionName}/points/search`,
+                {
+                    vector: this.generateVector(),
+                    filter: {
+                        must: [
+                            {
+                                key: 'tags',
+                                match: { value: 'test' }
+                            }
+                        ]
+                    },
+                    limit: 3
+                },
+                this.axiosConfig
+            );
+            if (!Array.isArray(response.data.result)) {
+                throw new Error('Filtered search failed');
+            }
+        });
+    }
+
+    private async testConcurrentOperations() {
+        await this.runTest('Concurrent Operations', async () => {
+            const operations = Array(5).fill(null).map(() => 
+                axios.post(
+                    `${this.config.baseUrl}/collections/${this.testCollectionName}/points/search`,
+                    {
+                        vector: this.generateVector(),
+                        limit: 1
+                    },
+                    this.axiosConfig
+                )
+            );
+            
+            await Promise.all(operations);
+        });
+    }
+
+    private async testErrorHandling() {
+        await this.runTest('Error Response Format', async () => {
+            try {
+                await axios.get(
+                    `${this.config.baseUrl}/collections/nonexistent_collection`,
+                    this.axiosConfig
+                );
+                throw new Error('Request to nonexistent collection should fail');
+            } catch (error) {
+                if (!(error instanceof AxiosError) || 
+                    !error.response?.data?.status?.error) {
+                    throw new Error('Error response format is not as expected');
+                }
+            }
+        });
+    }
+
+    private logTestSummary() {
+        const total = this.testResults.length;
+        const passed = this.testResults.filter(r => r.passed).length;
+        const failed = total - passed;
+
+        logger.info('\n=== Test Summary ===');
+        logger.info(`Total Tests: ${total}`);
+        logger.info(`Passed: ${passed}`);
+        logger.info(`Failed: ${failed}`);
+
+        if (failed > 0) {
+            logger.error('\nFailed Tests:');
+            this.testResults
+                .filter(r => !r.passed)
+                .forEach(r => {
+                    logger.error(`- ${r.description}: ${r.error}`);
+                });
+        }
     }
 
     private async cleanup() {
         try {
             logger.info('Cleaning up test data...');
-            
-            // Delete test collection
             await axios.delete(
                 `${this.config.baseUrl}/collections/${this.testCollectionName}`,
                 this.axiosConfig
@@ -161,4 +337,4 @@ class QdrantTester {
 export async function testQdrantAPI(config: QdrantTestConfig): Promise<boolean> {
     const tester = new QdrantTester(config);
     return await tester.runTests();
-} 
+}

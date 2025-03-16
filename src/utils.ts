@@ -7,6 +7,7 @@ import axios from 'axios';
 const { QdrantClient } = await import('@qdrant/js-client-rest');
 
 export const QDRANT_SERVER_URL = process.env.QDRANT_URL || 'http://192.168.2.190:6333';
+export const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
 export const EMBEDDING_API_URL = process.env.EMBEDDING_API_URL || 'http://192.168.2.190:8000/embed';
 export const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'mcp';
 export const VECTOR_SIZE = parseInt(process.env.QDRANT_VECTOR_SIZE || '384', 10); // MiniLM-L6-v2 produces 384-dimensional vectors
@@ -50,11 +51,8 @@ export async function getClient(): Promise<InstanceType<typeof QdrantClient> | n
       logger.info(`Initializing Qdrant client with URL: ${QDRANT_SERVER_URL}`);
       qdrantClient = new QdrantClient({
         url: QDRANT_SERVER_URL,
-        timeout: 10000, // Increased timeout
+        apiKey: QDRANT_API_KEY
       });
-      
-      // Test connection
-      await qdrantClient.getCollections();
     }
     return qdrantClient;
   } catch (error) {
@@ -80,34 +78,30 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
 export async function ensureCollectionExists(): Promise<boolean> {
   const client = await getClient();
   if (!client) {
-    logger.error('Failed to get Qdrant client');
-    throw new Error('Failed to get Qdrant client');
+    throw new Error('Failed to initialize Qdrant client');
   }
   
   try {
-    // Test connection first
-    logger.info('Testing Qdrant connection...');
-    await client.getCollections();
-    logger.info('Qdrant connection successful');
-    
-    try {
-      logger.info(`Checking if collection ${COLLECTION_NAME} exists...`);
-      await client.getCollection(COLLECTION_NAME);
-      logger.info(`Collection ${COLLECTION_NAME} exists`);
-      return true;
-    } catch {
-      logger.info(`Collection ${COLLECTION_NAME} does not exist, creating...`);
+    // Check if collection exists
+    const collections = await client.getCollections();
+    const exists = collections.collections.some(c => c.name === COLLECTION_NAME);
+
+    if (!exists) {
+      logger.info(`Creating collection ${COLLECTION_NAME}`);
       await client.createCollection(COLLECTION_NAME, {
         vectors: {
           size: VECTOR_SIZE,
-          distance: 'Cosine',
-        },
+          distance: 'Cosine'
+        }
       });
       logger.info(`Collection ${COLLECTION_NAME} created successfully`);
-      return true;
+    } else {
+      logger.info(`Collection ${COLLECTION_NAME} exists`);
     }
+
+    return true;
   } catch (error) {
-    logger.error('Failed to connect to Qdrant:', error);
+    logger.error('Failed to ensure collection exists:', error);
     throw error;
   }
 }

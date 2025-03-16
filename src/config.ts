@@ -14,6 +14,7 @@ const configSchema = z.object({
   
   // Qdrant configuration
   QDRANT_URL: z.string().url().default('http://192.168.2.190:6333'),
+  QDRANT_API_KEY: z.string().min(1),
   QDRANT_COLLECTION: z.string().default('mcp'),
   QDRANT_VECTOR_SIZE: z.number().int().positive().default(384),
   
@@ -44,6 +45,7 @@ function loadConfig(): Config {
       SERVER_VERSION: process.env.SERVER_VERSION,
       SERVER_DESCRIPTION: process.env.SERVER_DESCRIPTION,
       QDRANT_URL: process.env.QDRANT_URL,
+      QDRANT_API_KEY: process.env.QDRANT_API_KEY,
       QDRANT_COLLECTION: process.env.QDRANT_COLLECTION,
       QDRANT_VECTOR_SIZE: process.env.QDRANT_VECTOR_SIZE ? parseInt(process.env.QDRANT_VECTOR_SIZE) : undefined,
       EMBEDDING_API_URL: process.env.EMBEDDING_API_URL,
