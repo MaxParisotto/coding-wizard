@@ -10,9 +10,10 @@ from pydantic import SecretStr
 from dotenv import load_dotenv
 
 from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.tracers import ConsoleCallbackHandler
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
@@ -72,14 +73,15 @@ prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-# Create agent
+# Create agent with tracing enabled
 agent = create_openai_functions_agent(chat_model, tools, prompt)
 
-# Create agent executor with message history
+# Create agent executor with message history and tracing
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
     verbose=bool(os.getenv("VERBOSE", "True")),
+    callbacks=[ConsoleCallbackHandler()],
 )
 
 # Store memory instances
@@ -104,7 +106,7 @@ def create_memory(session_id: str) -> BaseChatMessageHistory:
     return memory_store[session_id]
 
 
-# Configure message history
+# Configure message history with tracing
 agent_with_chat_history = RunnableWithMessageHistory(
     cast(Runnable, agent_executor),
     create_memory,
@@ -129,7 +131,10 @@ def process_message(message: str) -> Dict[str, Optional[str]]:
     try:
         # Use a consistent session ID for this implementation
         session_id = "default_session"
-        config: RunnableConfig = {"configurable": {"session_id": session_id}}
+        config: RunnableConfig = {
+            "configurable": {"session_id": session_id},
+            "callbacks": [ConsoleCallbackHandler()],
+        }
         response = agent_with_chat_history.invoke(
             {"input": message},
             config=config
