@@ -1,15 +1,16 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import axios from 'axios';
+import path from 'path';
+import fs from 'fs';
 import { 
     ensureCollectionExists,
-    QDRANT_SERVER_URL,
-    QDRANT_API_KEY,
     COLLECTION_NAME,
     getEmbedding,
+    getClient
 } from '../../utils.js';
-import { logger } from '../../logger.js';
+import { logger, addFileTransports } from '../../logger.js';
 import { validateInput } from '../common/types.js';
+import { v4 as uuidv4 } from 'uuid';
 
 interface QdrantPayload {
     type: string;
@@ -30,20 +31,28 @@ const storeCodeSnippetSchema = z.object({
 });
 
 async function storeInQdrant(payload: QdrantPayload) {
-    await ensureCollectionExists();
-    
-    // Get embedding for the code
-    const vector = await getEmbedding(payload.code || '');
-    if (!vector) {
-        throw new Error('Failed to get embedding for code');
-    }
-    
-    const id = Date.now();
-    const timestamp = new Date().toISOString();
-    
-    await axios.put(
-        `${QDRANT_SERVER_URL}/collections/${COLLECTION_NAME}/points`,
-        {
+    try {
+        await ensureCollectionExists();
+        logger.info('Collection exists, getting embedding...');
+        
+        // Get embedding for the code
+        const vector = await getEmbedding(payload.code || '');
+        if (!vector) {
+            throw new Error('Failed to get embedding for code');
+        }
+        logger.info(`Got embedding with length ${vector.length}`);
+        
+        const id = uuidv4();
+        const timestamp = new Date().toISOString();
+        
+        logger.info(`Storing point with ID ${id} in collection ${COLLECTION_NAME}`);
+        
+        const client = await getClient();
+        if (!client) {
+            throw new Error('Failed to initialize Qdrant client');
+        }
+
+        await client.upsert(COLLECTION_NAME, {
             points: [{
                 id,
                 vector,
@@ -51,35 +60,44 @@ async function storeInQdrant(payload: QdrantPayload) {
                     ...payload,
                     id,
                     created_at: timestamp,
-                },
-            }],
-        },
-        {
-            headers: {
-                ...(QDRANT_API_KEY ? { 'api-key': QDRANT_API_KEY } : {}),
-                'Content-Type': 'application/json'
-            }
-        }
-    );
+                }
+            }]
+        });
 
-    return { id, timestamp };
+        logger.info('Successfully stored point in Qdrant');
+        return { id, timestamp };
+    } catch (error) {
+        logger.error('Failed to store in Qdrant:', error);
+        throw error;
+    }
 }
 
 export function registerStoreCodeSnippetTool(server: McpServer): void {
+    // Initialize logging
+    const logDir = path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+    }
+    addFileTransports(logDir);
+    logger.info('Initialized logging for store-code-snippet tool');
+
     server.tool(
         'store_code_snippet',
         'Stores a code snippet in the Qdrant vector database',
         storeCodeSnippetSchema.shape,
         async (params: z.infer<typeof storeCodeSnippetSchema>, _extra) => {
-            const validatedParams = validateInput(storeCodeSnippetSchema, params);
-
             try {
+                logger.info('Validating input parameters...');
+                const validatedParams = validateInput(storeCodeSnippetSchema, params);
+                logger.info('Input validation successful');
+
                 const searchableText = [
                     validatedParams.code,
                     validatedParams.description,
                     ...(validatedParams.tags || [])
                 ].join(' ');
 
+                logger.info('Storing code snippet in Qdrant...');
                 await storeInQdrant({
                     type: 'code_snippet',
                     ...validatedParams,
@@ -94,6 +112,15 @@ export function registerStoreCodeSnippetTool(server: McpServer): void {
                 };
             } catch (error) {
                 logger.error('Failed to store code snippet:', error);
+                if (error instanceof Error) {
+                    return {
+                        content: [{ 
+                            type: "text", 
+                            text: `Failed to store the code snippet: ${error.message}` 
+                        }],
+                        isError: true
+                    };
+                }
                 return {
                     content: [{ 
                         type: "text", 

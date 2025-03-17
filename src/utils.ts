@@ -6,11 +6,11 @@ import { logger } from './logger.js';
 import axios from 'axios';
 const { QdrantClient } = await import('@qdrant/js-client-rest');
 
-export const QDRANT_SERVER_URL = process.env.QDRANT_URL || 'http://192.168.2.190:6333';
+export const QDRANT_SERVER_URL = process.env.QDRANT_URL || 'http://192.168.3.171:6333';
 export const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
-export const EMBEDDING_API_URL = process.env.EMBEDDING_API_URL || 'http://192.168.2.190:8000/embed';
+export const EMBEDDING_API_URL = process.env.EMBEDDING_API_URL || 'http://192.168.3.171:8000/embed';
 export const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'mcp';
-export const VECTOR_SIZE = parseInt(process.env.QDRANT_VECTOR_SIZE || '384', 10); // MiniLM-L6-v2 produces 384-dimensional vectors
+export const VECTOR_SIZE = parseInt(process.env.QDRANT_VECTOR_SIZE || '768', 10); // all-mpnet-base-v2 produces 768-dimensional vectors
 
 const execPromise = promisify(_exec);
 
@@ -65,10 +65,10 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
   try {
     logger.info('Getting embedding for text...');
     const response = await axios.post(EMBEDDING_API_URL, { text });
-    if (!response.data || !Array.isArray(response.data.embedding)) {
+    if (!response.data || !Array.isArray(response.data)) {
       throw new Error('Invalid embedding response format');
     }
-    return response.data.embedding;
+    return response.data;
   } catch (error) {
     logger.error('Failed to get embedding:', error);
     return null;

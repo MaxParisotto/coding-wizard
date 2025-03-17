@@ -14,9 +14,11 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
     "@qdrant/js-client-rest": "1.13.0",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.6.7",
     "dotenv": "^16.4.5",
     "glob": "11.0.1",
+    "uuid": "^11.1.0",
     "winston": "^3.11.0",
     "zod": "^3.22.4"
   },
