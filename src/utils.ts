@@ -65,10 +65,10 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
   try {
     logger.info('Getting embedding for text...');
     const response = await axios.post(EMBEDDING_API_URL, { text });
-    if (!response.data || !Array.isArray(response.data)) {
+    if (!response.data || !response.data.embedding || !Array.isArray(response.data.embedding)) {
       throw new Error('Invalid embedding response format');
     }
-    return response.data;
+    return response.data.embedding;
   } catch (error) {
     logger.error('Failed to get embedding:', error);
     return null;
