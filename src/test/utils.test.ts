@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
-import { findSimilarPatterns, getClient, getEmbedding, QDRANT_SERVER_URL, EMBEDDING_API_URL } from '../utils.js';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { findSimilarPatterns, getClient, getEmbedding } from '../utils.js';
 
 describe('Vector Search Tests', () => {
   // Store original environment variables
   const originalEnv = {
     QDRANT_URL: process.env.QDRANT_URL,
-    EMBEDDING_API_URL: process.env.EMBEDDING_API_URL
+    EMBEDDING_API_URL: process.env.EMBEDDING_API_URL,
   };
 
   // Reset environment variables after each test
@@ -35,9 +35,9 @@ describe('Vector Search Tests', () => {
           description: 'Addition function',
           source: 'TypeScript utility',
           code: 'function add(a: number, b: number): number { return a + b; }',
-          language: 'typescript'
-        }
-      }]
+          language: 'typescript',
+        },
+      }],
     });
 
     // Add Python pattern
@@ -54,9 +54,9 @@ describe('Vector Search Tests', () => {
           description: 'Addition function',
           source: 'Python utility',
           code: 'def add(a: int, b: int) -> int:\n    return a + b',
-          language: 'python'
-        }
-      }]
+          language: 'python',
+        },
+      }],
     });
   });
 
