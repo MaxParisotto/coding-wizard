@@ -5,14 +5,19 @@ enhanced interactions.
 """
 
 import os
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, cast
 from pydantic import SecretStr
 from dotenv import load_dotenv
+
 from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-from langchain.memory import ConversationBufferMemory
+
 from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain.memory import ConversationBufferMemory
 from langchain.prompts import MessagesPlaceholder, ChatPromptTemplate
 from langchain.schema import SystemMessage, BaseMessage
 
@@ -22,11 +27,6 @@ load_dotenv()
 # Initialize tools
 search = DuckDuckGoSearchRun()
 tools = [search]
-# Initialize memory
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True
-)
 
 # Create system message
 system_message = SystemMessage(
@@ -75,12 +75,41 @@ prompt = ChatPromptTemplate.from_messages(
 # Create agent
 agent = create_openai_functions_agent(chat_model, tools, prompt)
 
-# Create agent executor
+# Create agent executor with message history
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
-    memory=memory,
     verbose=bool(os.getenv("VERBOSE", "True")),
+)
+
+# Store memory instances
+memory_store: Dict[str, BaseChatMessageHistory] = {}
+
+
+def create_memory(session_id: str) -> BaseChatMessageHistory:
+    """Create a new memory instance for a session.
+
+    Args:
+        session_id: The unique session identifier.
+
+    Returns:
+        A chat message history instance.
+    """
+    if session_id not in memory_store:
+        memory = ConversationBufferMemory(
+            return_messages=True,
+            memory_key="chat_history",
+        )
+        memory_store[session_id] = memory.chat_memory
+    return memory_store[session_id]
+
+
+# Configure message history
+agent_with_chat_history = RunnableWithMessageHistory(
+    cast(Runnable, agent_executor),
+    create_memory,
+    input_messages_key="input",
+    history_messages_key="chat_history",
 )
 
 
@@ -98,7 +127,13 @@ def process_message(message: str) -> Dict[str, Optional[str]]:
         Dict containing the agent's response and any error message.
     """
     try:
-        response = agent_executor.invoke({"input": message})
+        # Use a consistent session ID for this implementation
+        session_id = "default_session"
+        config: RunnableConfig = {"configurable": {"session_id": session_id}}
+        response = agent_with_chat_history.invoke(
+            {"input": message},
+            config=config
+        )
         return {"response": response["output"], "error": None}
     except (ValueError, KeyError, AgentError) as e:
         return {"response": None, "error": str(e)}
@@ -110,10 +145,10 @@ def get_chat_history() -> List[BaseMessage]:
     Returns:
         List of BaseMessage objects containing the chat history.
     """
-    if hasattr(memory.chat_memory, "messages"):
-        return memory.chat_memory.messages
-    return []
+    session_id = "default_session"
+    memory = memory_store.get(session_id)
+    return memory.messages if memory else []
 
 
 # Export the agent executor as chain for compatibility
-chain = agent_executor
+chain = agent_with_chat_history
