@@ -1,33 +1,29 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-# Install required system packages
-RUN apt-get update && apt-get install -y \
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and activate a virtual environment
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install required Python packages
-RUN pip install --no-cache-dir \
-    sentence-transformers \
-    fastapi \
-    uvicorn \
-    pydantic
-
-# Create app directory
+# Set working directory
 WORKDIR /app
 
-# Copy the embedding service script
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.109.2 \
+    uvicorn==0.27.1 \
+    sentence-transformers==2.5.1 \
+    qdrant-client==1.7.3
+
+# Download the model during build
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
+
+# Copy the server code
 COPY embedding_server.py .
 
-# Download and cache the model during build
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
-
-# Expose the service port
+# Expose port
 EXPOSE 8000
 
-# Start the FastAPI server
-CMD ["uvicorn", "embedding_server:app", "--host", "0.0.0.0", "--port", "8000"] 
+# Run the server
+CMD ["python", "embedding_server.py"] 

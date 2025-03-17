@@ -6,7 +6,7 @@ import { config } from '../config.js';
 import { validateInput } from './common/types.js';
 
 export const qdrantTestSchema = z.object({
-    baseUrl: z.string().url().default('http://192.168.2.190:6333'),
+    baseUrl: z.string().url().default('http://192.168.3.171:6333'),
     apiKey: z.string().optional(),
     vectorSize: z.number().positive().default(768),
     skipCleanup: z.boolean().default(false),
@@ -23,7 +23,7 @@ export function registerQdrantTestTool(server: McpServer): void {
         async (params: QdrantTestParams, _extra) => {
             const validatedParams = validateInput(qdrantTestSchema, params);
             logger.info('Starting Qdrant API test suite...', { 
-                baseUrl: validatedParams.baseUrl || 'http://192.168.2.190:6333',
+                baseUrl: validatedParams.baseUrl || 'http://192.168.3.171:6333',
                 vectorSize: validatedParams.vectorSize || 768,
                 skipCleanup: validatedParams.skipCleanup || false,
                 testTimeout: validatedParams.testTimeout || 30000,
@@ -33,7 +33,7 @@ export function registerQdrantTestTool(server: McpServer): void {
             try {
                 const startTime = Date.now();
                 const success = await testQdrantAPI({
-                    baseUrl: validatedParams.baseUrl || 'http://192.168.2.190:6333',
+                    baseUrl: validatedParams.baseUrl || 'http://192.168.3.171:6333',
                     apiKey: validatedParams.apiKey || '',
                     vectorSize: validatedParams.vectorSize || 768,
                     skipCleanup: validatedParams.skipCleanup || false,

@@ -2,36 +2,31 @@ version: '3.8'
 
 services:
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.7.3
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     networks:
       - mcp_network
 
-  embedding_service:
+  embedding:
     build:
       context: .
       dockerfile: embedding.Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - MODEL_NAME=sentence-transformers/all-mpnet-base-v2
-    networks:
-      - mcp_network
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
     depends_on:
       - qdrant
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    networks:
+      - mcp_network
 
 volumes:
-  qdrant_storage:
+  qdrant_data:
     driver: local
 
 networks:
